@@ -110,7 +110,7 @@ jobs:
 
           .method public static verifyKey(Ljava/lang/String;Ljava/lang/String;)I
               .locals 8
-              const/4 v0, 0x0
+              const/4 v0, 0x1
 
               if-eqz p0, :cond_ret_zero
               invoke-virtual {{p0}}, Ljava/lang/String;->trim()Ljava/lang/String;
@@ -153,7 +153,8 @@ jobs:
           :cond_call_server
               const/4 v1, 0x1
               new-array v1, v1, [I
-              aput v0, v1, v0
+              const/4 v2, 0x0
+              aput v0, v1, v2
 
               :try_start
               new-instance v2, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;
@@ -165,7 +166,8 @@ jobs:
               .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :catch_err
 
           :catch_err
-              aget v0, v1, v0
+              const/4 v2, 0x0
+              aget v0, v1, v2
               sput-object p0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastKey:Ljava/lang/String;
               sput-object p1, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastDeviceId:Ljava/lang/String;
               sput v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastResult:I
@@ -246,7 +248,7 @@ jobs:
               const/16 v4, 0xc8
               if-ne v3, v4, :cond_done
               iget-object v3, p0, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;->out:[I
-              aput v2, v3, v0
+              aput v0, v3, v0
               :try_end
               .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :catch_err
 
