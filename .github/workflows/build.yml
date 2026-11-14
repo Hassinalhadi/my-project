@@ -282,7 +282,7 @@ jobs:
               smali,
               "check",
               "    .locals 1\n"
-              "    invoke-static {p2, p3}, Ldev/jing/dispatchkit/license/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)I\n"
+              "    invoke-static {p3, p4}, Ldev/jing/dispatchkit/license/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)I\n"
               "    move-result v0\n"
               "    return v0"
           )
