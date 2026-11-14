@@ -1,0 +1,122 @@
+name: Build & Patch MGS131 APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: 'رابط سيرفر PythonAnywhere (مثال: https://username.pythonanywhere.com)'
+        required: false
+        default: 'https://YOUR_USERNAME.pythonanywhere.com'
+
+env:
+  # ضع رابط سيرفرك على PythonAnywhere هنا أو مرره عند التشغيل اليدوي
+  DEFAULT_SERVER_URL: 'https://YOUR_USERNAME.pythonanywhere.com'
+  APK_FILE: 'MGS131_Final.apk'
+
+jobs:
+  build-and-patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download Apktool & uber-apk-signer
+        run: |
+          mkdir -p tools
+          curl -fsSL -o tools/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar
+          curl -fsSL -o tools/uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: Decompile APK
+        run: |
+          if [ ! -f "$APK_FILE" ]; then
+            echo "Error: $APK_FILE not found in repository root!"
+            exit 1
+          fi
+          java -jar tools/apktool.jar d -f "$APK_FILE" -o decompiled_apk
+
+      - name: Patch LicenseBridge & Server URL
+        env:
+          TARGET_URL: ${{ github.event.inputs.server_url || env.DEFAULT_SERVER_URL }}
+        run: |
+          python3 - <<'EOF'
+          import glob
+          import os
+          import re
+
+          server_url = os.environ["TARGET_URL"].rstrip("/")
+          print(f"Using server URL: {server_url}")
+
+          # 1. البحث عن ملف LicenseBridge.smali وتحديثه
+          matches = glob.glob("decompiled_apk/smali*/dev/jing/dispatchkit/license/LicenseBridge.smali")
+          if not matches:
+              raise FileNotFoundError("LicenseBridge.smali not found in decompiled_apk!")
+
+          bridge_path = matches[0]
+          print(f"Found LicenseBridge: {bridge_path}")
+          with open(bridge_path, "r", encoding="utf-8") as f:
+              smali = f.read()
+
+          # تمرير دوال التحقق الأساسية (check و allowRequest و consumeNativeApproval)
+          # بحيث ترجع 1 (مفعّل) إذا كان التحقق المحلي معطلاً
+          def patch_int_method(code, method_name, return_val=1):
+              pattern = rf"(\.method[^\n]*\b{method_name}\([^\n]*\)I\n)(.*?)(\n\.end method)"
+              replacement = (
+                  rf"\1"
+                  f"    .locals 1\n"
+                  f"    const/4 v0, 0x{return_val}\n"
+                  f"    return v0"
+                  rf"\3"
+              )
+              new_code, count = re.subn(pattern, replacement, code, flags=re.DOTALL)
+              print(f"Patched {method_name}: {count} occurrence(s)")
+              return new_code
+
+          smali = patch_int_method(smali, "check", 1)
+          smali = patch_int_method(smali, "allowRequest", 1)
+          smali = patch_int_method(smali, "consumeNativeApproval", 1)
+
+          with open(bridge_path, "w", encoding="utf-8") as f:
+              f.write(smali)
+
+          # 2. استبدال أي رابط سيرفر قديم في ملفات smali إذا وجد
+          replaced_urls = 0
+          for root, _, files in os.walk("decompiled_apk"):
+              for name in files:
+                  if not name.endswith(".smali"):
+                      continue
+                  fpath = os.path.join(root, name)
+                  with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  if "pythonanywhere.com" in content:
+                      updated = re.sub(r"https?://[a-zA-Z0-9._-]+\.pythonanywhere\.com", server_url, content)
+                      if updated != content:
+                          with open(fpath, "w", encoding="utf-8") as f:
+                              f.write(updated)
+                          replaced_urls += 1
+          print(f"Updated existing PythonAnywhere URLs in {replaced_urls} file(s).")
+          EOF
+
+      - name: Rebuild APK
+        run: |
+          java -jar tools/apktool.jar b decompiled_apk -o unsigned.apk
+
+      - name: Sign APK
+        run: |
+          mkdir -p output_apk
+          java -jar tools/uber-apk-signer.jar --apks unsigned.apk --out output_apk
+          ls -la output_apk
+
+      - name: Upload Patched APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MGS131_Patched_Signed
+          path: output_apk/*.apk
