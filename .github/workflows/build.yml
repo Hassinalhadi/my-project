@@ -92,10 +92,18 @@ jobs:
 
           if logo_src:
               print(f"Found root logo: {logo_src}")
-              # استبدال DQ.jpg (الشعار الداخلي الرئيسي) أو أي ملف logo داخل res
-              logo_targets = glob.glob("decompiled_apk/res/**/DQ.jpg", recursive=True)
+              # استبدال vendor.jpg (الاسم المفكوك لـ DQ.jpg) أو أي ملف logo/DQ كبير داخل res
+              logo_targets = []
+              for pat in ["decompiled_apk/res/**/vendor.*", "decompiled_apk/res/**/DQ.*", "decompiled_apk/res/**/*logo*"]:
+                  logo_targets.extend(glob.glob(pat, recursive=True))
               if not logo_targets:
-                  logo_targets = glob.glob("decompiled_apk/res/**/*logo*", recursive=True)
+                  for root, _, files in os.walk("decompiled_apk/res"):
+                      for fn in files:
+                          fp = os.path.join(root, fn)
+                          if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp")) and "rider_assitant_icon" not in fn and os.path.getsize(fp) > 10000:
+                              logo_targets.append(fp)
+              logo_targets = sorted(set(logo_targets))
+              print(f"Logo targets found: {logo_targets}")
               with Image.open(logo_src) as im:
                   rgb_im = im.convert("RGB")
                   for target in logo_targets:
