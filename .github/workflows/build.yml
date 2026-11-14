@@ -11,7 +11,6 @@ on:
         default: 'https://7snalhadi.pythonanywhere.com'
 
 env:
-  # ضع رابط سيرفرك على PythonAnywhere هنا أو مرره عند التشغيل اليدوي
   DEFAULT_SERVER_URL: 'https://7snalhadi.pythonanywhere.com'
   APK_FILE: 'MGS131_Final.apk'
 
@@ -43,7 +42,7 @@ jobs:
           fi
           java -jar tools/apktool.jar d -f "$APK_FILE" -o decompiled_apk
 
-      - name: Patch LicenseBridge & Server URL
+      - name: Inject ServerLicenseClient & Patch LicenseBridge
         env:
           TARGET_URL: ${{ github.event.inputs.server_url || env.DEFAULT_SERVER_URL }}
         run: |
@@ -55,54 +54,269 @@ jobs:
           server_url = os.environ["TARGET_URL"].rstrip("/")
           print(f"Using server URL: {server_url}")
 
-          # 1. البحث عن ملف LicenseBridge.smali وتحديثه
+          # 1. التأكد من وجود صلاحية INTERNET في AndroidManifest.xml
+          manifest_path = "decompiled_apk/AndroidManifest.xml"
+          with open(manifest_path, "r", encoding="utf-8") as f:
+              manifest = f.read()
+          if "android.permission.INTERNET" not in manifest:
+              manifest = manifest.replace(
+                  "<application",
+                  '    <uses-permission android:name="android.permission.INTERNET"/>\n    <application',
+                  1,
+              )
+              with open(manifest_path, "w", encoding="utf-8") as f:
+                  f.write(manifest)
+              print("Added INTERNET permission to AndroidManifest.xml")
+
+          # 2. العثور على مجلد smali الذي يحتوي على LicenseBridge.smali
           matches = glob.glob("decompiled_apk/smali*/dev/jing/dispatchkit/license/LicenseBridge.smali")
           if not matches:
               raise FileNotFoundError("LicenseBridge.smali not found in decompiled_apk!")
 
           bridge_path = matches[0]
+          license_dir = os.path.dirname(bridge_path)
           print(f"Found LicenseBridge: {bridge_path}")
+
+          # 3. إنشاء ServerLicenseClient.smali و ServerLicenseClient$Worker.smali للاتصال بـ /api/activate
+          client_smali = f""".class public final Ldev/jing/dispatchkit/license/ServerLicenseClient;
+          .super Ljava/lang/Object;
+
+          .field private static final SERVER_URL:Ljava/lang/String; = "{server_url}"
+          .field private static lastKey:Ljava/lang/String;
+          .field private static lastDeviceId:Ljava/lang/String;
+          .field private static volatile lastResult:I
+          .field private static volatile lastCheckMs:J
+
+          .method static constructor <clinit>()V
+              .locals 2
+              const/4 v0, 0x0
+              sput v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastResult:I
+              const-wide/16 v0, 0x0
+              sput-wide v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastCheckMs:J
+              return-void
+          .end method
+
+          .method public constructor <init>()V
+              .locals 0
+              invoke-direct {{p0}}, Ljava/lang/Object;-><init>()V
+              return-void
+          .end method
+
+          .method public static getLastResult()I
+              .locals 1
+              sget v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastResult:I
+              return v0
+          .end method
+
+          .method public static verifyKey(Ljava/lang/String;Ljava/lang/String;)I
+              .locals 8
+              const/4 v0, 0x0
+
+              if-eqz p0, :cond_ret_zero
+              invoke-virtual {{p0}}, Ljava/lang/String;->trim()Ljava/lang/String;
+              move-result-object p0
+              invoke-virtual {{p0}}, Ljava/lang/String;->length()I
+              move-result v1
+              if-eqz v1, :cond_ret_zero
+
+              if-eqz p1, :cond_ret_zero
+              invoke-virtual {{p1}}, Ljava/lang/String;->trim()Ljava/lang/String;
+              move-result-object p1
+              invoke-virtual {{p1}}, Ljava/lang/String;->length()I
+              move-result v1
+              if-eqz v1, :cond_ret_zero
+
+              # التحقق من الكاش لمدة 60 ثانية
+              sget-object v1, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastKey:Ljava/lang/String;
+              if-eqz v1, :cond_call_server
+              invoke-virtual {{p0, v1}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+              move-result v1
+              if-eqz v1, :cond_call_server
+
+              sget-object v1, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastDeviceId:Ljava/lang/String;
+              if-eqz v1, :cond_call_server
+              invoke-virtual {{p1, v1}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+              move-result v1
+              if-eqz v1, :cond_call_server
+
+              invoke-static {{}}, Ljava/lang/System;->currentTimeMillis()J
+              move-result-wide v2
+              sget-wide v4, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastCheckMs:J
+              sub-long/2addr v2, v4
+              const-wide/32 v4, 0xea60
+              cmp-long v1, v2, v4
+              if-gez v1, :cond_call_server
+
+              sget v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastResult:I
+              return v0
+
+          :cond_call_server
+              const/4 v1, 0x1
+              new-array v1, v1, [I
+              aput v0, v1, v0
+
+              :try_start
+              new-instance v2, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;
+              invoke-direct {{v2, p0, p1, v1}}, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;-><init>(Ljava/lang/String;Ljava/lang/String;[I)V
+              invoke-virtual {{v2}}, Ljava/lang/Thread;->start()V
+              const-wide/16 v3, 0x2710
+              invoke-virtual {{v2, v3, v4}}, Ljava/lang/Thread;->join(J)V
+              :try_end
+              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :catch_err
+
+          :catch_err
+              aget v0, v1, v0
+              sput-object p0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastKey:Ljava/lang/String;
+              sput-object p1, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastDeviceId:Ljava/lang/String;
+              sput v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastResult:I
+              invoke-static {{}}, Ljava/lang/System;->currentTimeMillis()J
+              move-result-wide v2
+              sput-wide v2, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastCheckMs:J
+              return v0
+
+          :cond_ret_zero
+              return v0
+          .end method
+          """
+
+          worker_smali = f""".class public final Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;
+          .super Ljava/lang/Thread;
+
+          .field private final key:Ljava/lang/String;
+          .field private final deviceId:Ljava/lang/String;
+          .field private final out:[I
+
+          .method public constructor <init>(Ljava/lang/String;Ljava/lang/String;[I)V
+              .locals 0
+              invoke-direct {{p0}}, Ljava/lang/Thread;-><init>()V
+              iput-object p1, p0, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;->key:Ljava/lang/String;
+              iput-object p2, p0, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;->deviceId:Ljava/lang/String;
+              iput-object p3, p0, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;->out:[I
+              return-void
+          .end method
+
+          .method public run()V
+              .locals 7
+              const/4 v0, 0x0
+              :try_start
+              new-instance v1, Ljava/net/URL;
+              const-string v2, "{server_url}/api/activate"
+              invoke-direct {{v1, v2}}, Ljava/net/URL;-><init>(Ljava/lang/String;)V
+
+              invoke-virtual {{v1}}, Ljava/net/URL;->openConnection()Ljava/net/URLConnection;
+              move-result-object v1
+              check-cast v1, Ljava/net/HttpURLConnection;
+
+              const-string v2, "POST"
+              invoke-virtual {{v1, v2}}, Ljava/net/HttpURLConnection;->setRequestMethod(Ljava/lang/String;)V
+              const/16 v2, 0x1f40
+              invoke-virtual {{v1, v2}}, Ljava/net/HttpURLConnection;->setConnectTimeout(I)V
+              invoke-virtual {{v1, v2}}, Ljava/net/HttpURLConnection;->setReadTimeout(I)V
+              const/4 v2, 0x1
+              invoke-virtual {{v1, v2}}, Ljava/net/HttpURLConnection;->setDoOutput(Z)V
+              const-string v3, "Content-Type"
+              const-string v4, "application/json; charset=UTF-8"
+              invoke-virtual {{v1, v3, v4}}, Ljava/net/HttpURLConnection;->setRequestProperty(Ljava/lang/String;Ljava/lang/String;)V
+
+              new-instance v3, Lorg/json/JSONObject;
+              invoke-direct {{v3}}, Lorg/json/JSONObject;-><init>()V
+              const-string v4, "key"
+              iget-object v5, p0, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;->key:Ljava/lang/String;
+              invoke-virtual {{v3, v4, v5}}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+              const-string v4, "device_id"
+              iget-object v5, p0, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;->deviceId:Ljava/lang/String;
+              invoke-virtual {{v3, v4, v5}}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+              invoke-virtual {{v3}}, Lorg/json/JSONObject;->toString()Ljava/lang/String;
+              move-result-object v3
+              sget-object v4, Ljava/nio/charset/StandardCharsets;->UTF_8:Ljava/nio/charset/Charset;
+              invoke-virtual {{v3, v4}}, Ljava/lang/String;->getBytes(Ljava/nio/charset/Charset;)[B
+              move-result-object v3
+
+              invoke-virtual {{v1}}, Ljava/net/HttpURLConnection;->getOutputStream()Ljava/io/OutputStream;
+              move-result-object v4
+              invoke-virtual {{v4, v3}}, Ljava/io/OutputStream;->write([B)V
+              invoke-virtual {{v4}}, Ljava/io/OutputStream;->flush()V
+              invoke-virtual {{v4}}, Ljava/io/OutputStream;->close()V
+
+              invoke-virtual {{v1}}, Ljava/net/HttpURLConnection;->getResponseCode()I
+              move-result v3
+              invoke-virtual {{v1}}, Ljava/net/HttpURLConnection;->disconnect()V
+
+              const/16 v4, 0xc8
+              if-ne v3, v4, :cond_done
+              iget-object v3, p0, Ldev/jing/dispatchkit/license/ServerLicenseClient$Worker;->out:[I
+              aput v2, v3, v0
+              :try_end
+              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :catch_err
+
+          :cond_done
+              return-void
+
+          :catch_err
+              return-void
+          .end method
+          """
+
+          # إزالة المسافات البادئة الزائدة من النصوص
+          client_smali = "\n".join(line[10:] if line.startswith("          ") else line for line in client_smali.splitlines()) + "\n"
+          worker_smali = "\n".join(line[10:] if line.startswith("          ") else line for line in worker_smali.splitlines()) + "\n"
+
+          with open(os.path.join(license_dir, "ServerLicenseClient.smali"), "w", encoding="utf-8") as f:
+              f.write(client_smali)
+          with open(os.path.join(license_dir, "ServerLicenseClient$Worker.smali"), "w", encoding="utf-8") as f:
+              f.write(worker_smali)
+          print("Injected ServerLicenseClient.smali and ServerLicenseClient$Worker.smali")
+
+          # 4. تعديل LicenseBridge.smali ليربط check و allowRequest و consumeNativeApproval بالسيرفر
           with open(bridge_path, "r", encoding="utf-8") as f:
               smali = f.read()
 
-          # تمرير دوال التحقق الأساسية (check و allowRequest و consumeNativeApproval)
-          # بحيث ترجع 1 (مفعّل) إذا كان التحقق المحلي معطلاً
-          def patch_int_method(code, method_name, return_val=1):
+          def replace_method(code, method_name, body):
               pattern = rf"(\.method[^\n]*\b{method_name}\([^\n]*\)I\n)(.*?)(\n\.end method)"
-              replacement = (
-                  rf"\1"
-                  f"    .locals 1\n"
-                  f"    const/4 v0, 0x{return_val}\n"
-                  f"    return v0"
-                  rf"\3"
-              )
-              new_code, count = re.subn(pattern, replacement, code, flags=re.DOTALL)
+              new_code, count = re.subn(pattern, rf"\1{body}\3", code, flags=re.DOTALL)
               print(f"Patched {method_name}: {count} occurrence(s)")
               return new_code
 
-          smali = patch_int_method(smali, "check", 1)
-          smali = patch_int_method(smali, "allowRequest", 1)
-          smali = patch_int_method(smali, "consumeNativeApproval", 1)
+          smali = replace_method(
+              smali,
+              "check",
+              "    .locals 1\n"
+              "    invoke-static {p2, p3}, Ldev/jing/dispatchkit/license/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)I\n"
+              "    move-result v0\n"
+              "    return v0"
+          )
+
+          smali = replace_method(
+              smali,
+              "allowRequest",
+              "    .locals 1\n"
+              "    invoke-static {}, Ldev/jing/dispatchkit/license/ServerLicenseClient;->getLastResult()I\n"
+              "    move-result v0\n"
+              "    return v0"
+          )
+
+          smali = replace_method(
+              smali,
+              "consumeNativeApproval",
+              "    .locals 1\n"
+              "    invoke-static {}, Ldev/jing/dispatchkit/license/ServerLicenseClient;->getLastResult()I\n"
+              "    move-result v0\n"
+              "    return v0"
+          )
 
           with open(bridge_path, "w", encoding="utf-8") as f:
               f.write(smali)
 
-          # 2. استبدال أي رابط سيرفر قديم في ملفات smali إذا وجد
-          replaced_urls = 0
+          # 5. طباعة الملفات التي تحتوي على SL1. للتأكد من مسار الواجهة
           for root, _, files in os.walk("decompiled_apk"):
               for name in files:
-                  if not name.endswith(".smali"):
-                      continue
-                  fpath = os.path.join(root, name)
-                  with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
-                  if "pythonanywhere.com" in content:
-                      updated = re.sub(r"https?://[a-zA-Z0-9._-]+\.pythonanywhere\.com", server_url, content)
-                      if updated != content:
-                          with open(fpath, "w", encoding="utf-8") as f:
-                              f.write(updated)
-                          replaced_urls += 1
-          print(f"Updated existing PythonAnywhere URLs in {replaced_urls} file(s).")
+                  if name.endswith(".smali"):
+                      fpath = os.path.join(root, name)
+                      with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                          txt = f.read()
+                      if '"SL1."' in txt:
+                          print(f"Found SL1. reference in: {fpath}")
           EOF
 
       - name: Rebuild APK
