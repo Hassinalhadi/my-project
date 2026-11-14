@@ -8,11 +8,11 @@ on:
       server_url:
         description: 'رابط سيرفر PythonAnywhere (مثال: https://username.pythonanywhere.com)'
         required: false
-        default: 'https://YOUR_USERNAME.pythonanywhere.com'
+        default: 'https://7snalhadi.pythonanywhere.com'
 
 env:
   # ضع رابط سيرفرك على PythonAnywhere هنا أو مرره عند التشغيل اليدوي
-  DEFAULT_SERVER_URL: 'https://YOUR_USERNAME.pythonanywhere.com'
+  DEFAULT_SERVER_URL: 'https://7snalhadi.pythonanywhere.com'
   APK_FILE: 'MGS131_Final.apk'
 
 jobs:
