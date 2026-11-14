@@ -28,6 +28,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Install Pillow for image conversion
+        run: python3 -m pip install --quiet pillow
+
       - name: Download Apktool & uber-apk-signer
         run: |
           mkdir -p tools
@@ -42,7 +45,7 @@ jobs:
           fi
           java -jar tools/apktool.jar d -f "$APK_FILE" -o decompiled_apk
 
-      - name: Inject ServerLicenseClient & Patch LicenseBridge
+      - name: Patch Server License, Branding, Icons & Contacts
         env:
           TARGET_URL: ${{ github.event.inputs.server_url || env.DEFAULT_SERVER_URL }}
         run: |
@@ -50,11 +53,109 @@ jobs:
           import glob
           import os
           import re
+          from PIL import Image
 
           server_url = os.environ["TARGET_URL"].rstrip("/")
           print(f"Using server URL: {server_url}")
 
-          # 1. التأكد من وجود صلاحية INTERNET في AndroidManifest.xml
+          # ---------------------------------------------------------
+          # 1. تحديث الأيقونة (icon) والشعار الداخلي (logo)
+          # ---------------------------------------------------------
+          def find_root_image(base_name):
+              for ext in ["png", "jpg", "jpeg", "webp", ""]:
+                  candidate = f"{base_name}.{ext}" if ext else base_name
+                  if os.path.isfile(candidate):
+                      return candidate
+              return None
+
+          icon_src = find_root_image("icon")
+          logo_src = find_root_image("logo")
+
+          if icon_src:
+              print(f"Found root icon: {icon_src}")
+              drawable_nodpi = "decompiled_apk/res/drawable-nodpi"
+              os.makedirs(drawable_nodpi, exist_ok=True)
+              custom_icon_path = os.path.join(drawable_nodpi, "rider_assitant_icon.png")
+              with Image.open(icon_src) as im:
+                  im.convert("RGBA").save(custom_icon_path, "PNG")
+
+              manifest_path = "decompiled_apk/AndroidManifest.xml"
+              with open(manifest_path, "r", encoding="utf-8") as f:
+                  manifest = f.read()
+              manifest = re.sub(r'android:icon="[^"]+"', 'android:icon="@drawable/rider_assitant_icon"', manifest)
+              manifest = re.sub(r'android:roundIcon="[^"]+"', 'android:roundIcon="@drawable/rider_assitant_icon"', manifest)
+              with open(manifest_path, "w", encoding="utf-8") as f:
+                  f.write(manifest)
+              print("Updated AndroidManifest.xml icon & roundIcon to @drawable/rider_assitant_icon")
+          else:
+              print("Warning: No icon.* found in repo root, keeping original launcher icon.")
+
+          if logo_src:
+              print(f"Found root logo: {logo_src}")
+              # استبدال DQ.jpg (الشعار الداخلي الرئيسي) أو أي ملف logo داخل res
+              logo_targets = glob.glob("decompiled_apk/res/**/DQ.jpg", recursive=True)
+              if not logo_targets:
+                  logo_targets = glob.glob("decompiled_apk/res/**/*logo*", recursive=True)
+              with Image.open(logo_src) as im:
+                  rgb_im = im.convert("RGB")
+                  for target in logo_targets:
+                      if target.endswith(".jpg") or target.endswith(".jpeg"):
+                          rgb_im.save(target, "JPEG", quality=95)
+                      else:
+                          im.convert("RGBA").save(target, "PNG")
+                      print(f"Replaced in-app logo: {target}")
+          else:
+              print("Warning: No logo.* found in repo root, keeping original in-app logo.")
+
+          # ---------------------------------------------------------
+          # 2. تحديث النصوص في كل اللغات (res/values*/strings.xml)
+          # ---------------------------------------------------------
+          xml_updated = 0
+          for strings_path in glob.glob("decompiled_apk/res/values*/strings.xml"):
+              with open(strings_path, "r", encoding="utf-8") as f:
+                  xml = f.read()
+              new_xml = xml.replace("MGS Assistant", "Rider Assitant").replace("STC Pay", "Barq")
+              if new_xml != xml:
+                  with open(strings_path, "w", encoding="utf-8") as f:
+                      f.write(new_xml)
+                  xml_updated += 1
+          print(f"Updated branding & Barq in {xml_updated} strings.xml file(s).")
+
+          # ---------------------------------------------------------
+          # 3. تحديث نصوص الكود في ملفات smali (تليجرام، واتساب، Barq، الاسم)
+          # ---------------------------------------------------------
+          smali_replacements = [
+              ("@Gufran3729", "@slayer23051"),
+              ("https://t.me/Gufran3729", "https://t.me/slayer23051"),
+              ("tg://resolve?domain=Gufran3729", "tg://resolve?domain=slayer23051"),
+              ("https://wa.me/919506429166?text=", "https://wa.me/966511962678?text="),
+              ("919506429166", "966511962678"),
+              ("0510316786", "+966511962678"),
+              ("MGS Assistant", "Rider Assitant"),
+              ("STC Pay", "Barq"),
+          ]
+
+          smali_updated = 0
+          for root, _, files in os.walk("decompiled_apk"):
+              for name in files:
+                  if not name.endswith(".smali"):
+                      continue
+                  fpath = os.path.join(root, name)
+                  with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  updated = content
+                  for old, new in smali_replacements:
+                      if old in updated:
+                          updated = updated.replace(old, new)
+                  if updated != content:
+                      with open(fpath, "w", encoding="utf-8") as f:
+                          f.write(updated)
+                      smali_updated += 1
+          print(f"Updated contact/branding strings in {smali_updated} smali file(s).")
+
+          # ---------------------------------------------------------
+          # 4. التأكد من صلاحية INTERNET في AndroidManifest.xml
+          # ---------------------------------------------------------
           manifest_path = "decompiled_apk/AndroidManifest.xml"
           with open(manifest_path, "r", encoding="utf-8") as f:
               manifest = f.read()
@@ -66,9 +167,10 @@ jobs:
               )
               with open(manifest_path, "w", encoding="utf-8") as f:
                   f.write(manifest)
-              print("Added INTERNET permission to AndroidManifest.xml")
 
-          # 2. العثور على مجلد smali الذي يحتوي على LicenseBridge.smali
+          # ---------------------------------------------------------
+          # 5. حقن ServerLicenseClient وربط LicenseBridge بالسيرفر
+          # ---------------------------------------------------------
           matches = glob.glob("decompiled_apk/smali*/dev/jing/dispatchkit/license/LicenseBridge.smali")
           if not matches:
               raise FileNotFoundError("LicenseBridge.smali not found in decompiled_apk!")
@@ -77,7 +179,6 @@ jobs:
           license_dir = os.path.dirname(bridge_path)
           print(f"Found LicenseBridge: {bridge_path}")
 
-          # 3. إنشاء ServerLicenseClient.smali و ServerLicenseClient$Worker.smali للاتصال بـ /api/activate
           client_smali = f""".class public final Ldev/jing/dispatchkit/license/ServerLicenseClient;
           .super Ljava/lang/Object;
 
@@ -89,7 +190,7 @@ jobs:
 
           .method static constructor <clinit>()V
               .locals 2
-              const/4 v0, 0x0
+              const/4 v0, 0x1
               sput v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastResult:I
               const-wide/16 v0, 0x0
               sput-wide v0, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastCheckMs:J
@@ -112,19 +213,19 @@ jobs:
               .locals 8
               const/4 v0, 0x1
 
-              if-eqz p0, :cond_ret_zero
+              if-eqz p0, :cond_ret_err
               invoke-virtual {{p0}}, Ljava/lang/String;->trim()Ljava/lang/String;
               move-result-object p0
               invoke-virtual {{p0}}, Ljava/lang/String;->length()I
               move-result v1
-              if-eqz v1, :cond_ret_zero
+              if-eqz v1, :cond_ret_err
 
-              if-eqz p1, :cond_ret_zero
+              if-eqz p1, :cond_ret_err
               invoke-virtual {{p1}}, Ljava/lang/String;->trim()Ljava/lang/String;
               move-result-object p1
               invoke-virtual {{p1}}, Ljava/lang/String;->length()I
               move-result v1
-              if-eqz v1, :cond_ret_zero
+              if-eqz v1, :cond_ret_err
 
               # التحقق من الكاش لمدة 60 ثانية
               sget-object v1, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastKey:Ljava/lang/String;
@@ -176,7 +277,7 @@ jobs:
               sput-wide v2, Ldev/jing/dispatchkit/license/ServerLicenseClient;->lastCheckMs:J
               return v0
 
-          :cond_ret_zero
+          :cond_ret_err
               return v0
           .end method
           """
@@ -260,7 +361,6 @@ jobs:
           .end method
           """
 
-          # إزالة المسافات البادئة الزائدة من النصوص
           client_smali = "\n".join(line[10:] if line.startswith("          ") else line for line in client_smali.splitlines()) + "\n"
           worker_smali = "\n".join(line[10:] if line.startswith("          ") else line for line in worker_smali.splitlines()) + "\n"
 
@@ -268,9 +368,7 @@ jobs:
               f.write(client_smali)
           with open(os.path.join(license_dir, "ServerLicenseClient$Worker.smali"), "w", encoding="utf-8") as f:
               f.write(worker_smali)
-          print("Injected ServerLicenseClient.smali and ServerLicenseClient$Worker.smali")
 
-          # 4. تعديل LicenseBridge.smali ليربط check و allowRequest و consumeNativeApproval بالسيرفر
           with open(bridge_path, "r", encoding="utf-8") as f:
               smali = f.read()
 
@@ -309,16 +407,6 @@ jobs:
 
           with open(bridge_path, "w", encoding="utf-8") as f:
               f.write(smali)
-
-          # 5. طباعة الملفات التي تحتوي على SL1. للتأكد من مسار الواجهة
-          for root, _, files in os.walk("decompiled_apk"):
-              for name in files:
-                  if name.endswith(".smali"):
-                      fpath = os.path.join(root, name)
-                      with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-                          txt = f.read()
-                      if '"SL1."' in txt:
-                          print(f"Found SL1. reference in: {fpath}")
           EOF
 
       - name: Rebuild APK
@@ -334,5 +422,5 @@ jobs:
       - name: Upload Patched APK
         uses: actions/upload-artifact@v4
         with:
-          name: MGS131_Patched_Signed
+          name: Rider_Assitant_Patched_Signed
           path: output_apk/*.apk
