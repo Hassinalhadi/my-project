@@ -117,6 +117,19 @@ jobs:
               return-void
           .end method
 
+          .method public static installCrashReporter(Landroid/content/Context;)V
+              .locals 2
+              if-nez p0, :cond_ok
+              return-void
+          :cond_ok
+              invoke-virtual {{p0}}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
+              move-result-object v0
+              new-instance v1, Ldev/senditpilot/hook/ServerLicenseClient$CrashHandler;
+              invoke-direct {{v1, v0}}, Ldev/senditpilot/hook/ServerLicenseClient$CrashHandler;-><init>(Landroid/content/Context;)V
+              invoke-static {{v1}}, Ljava/lang/Thread;->setDefaultUncaughtExceptionHandler(Ljava/lang/Thread$UncaughtExceptionHandler;)V
+              return-void
+          .end method
+
           .method public static isLastValid()Z
               .locals 1
               sget-boolean v0, Ldev/senditpilot/hook/ServerLicenseClient;->lastValid:Z
@@ -130,6 +143,7 @@ jobs:
               return v0
 
           :cond_ctx_ok
+              invoke-static {{p0}}, Ldev/senditpilot/hook/ServerLicenseClient;->installCrashReporter(Landroid/content/Context;)V
               const-string v1, "dev.senditpilot_settings"
               invoke-virtual {{p0, v1, v0}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
               move-result-object v1
@@ -348,6 +362,52 @@ jobs:
               f.write(client_smali)
           with open(os.path.join(hook_dir, "ServerLicenseClient$Worker.smali"), "w", encoding="utf-8") as f:
               f.write(worker_smali)
+
+          crash_smali = """.class public final Ldev/senditpilot/hook/ServerLicenseClient$CrashHandler;
+          .super Ljava/lang/Object;
+          .implements Ljava/lang/Thread$UncaughtExceptionHandler;
+
+          .field private final ctx:Landroid/content/Context;
+          .field private final prev:Ljava/lang/Thread$UncaughtExceptionHandler;
+
+          .method public constructor <init>(Landroid/content/Context;)V
+              .locals 1
+              invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+              iput-object p1, p0, Ldev/senditpilot/hook/ServerLicenseClient$CrashHandler;->ctx:Landroid/content/Context;
+              invoke-static {}, Ljava/lang/Thread;->getDefaultUncaughtExceptionHandler()Ljava/lang/Thread$UncaughtExceptionHandler;
+              move-result-object v0
+              iput-object v0, p0, Ldev/senditpilot/hook/ServerLicenseClient$CrashHandler;->prev:Ljava/lang/Thread$UncaughtExceptionHandler;
+              return-void
+          .end method
+
+          .method public uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V
+              .locals 4
+              :try_start
+              invoke-static {p2}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
+              move-result-object v0
+              iget-object v1, p0, Ldev/senditpilot/hook/ServerLicenseClient$CrashHandler;->ctx:Landroid/content/Context;
+              const-string v2, "clipboard"
+              invoke-virtual {v1, v2}, Landroid/content/Context;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
+              move-result-object v1
+              check-cast v1, Landroid/content/ClipboardManager;
+              const-string v2, "AGS_CRASH"
+              invoke-static {v2, v0}, Landroid/content/ClipData;->newPlainText(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;
+              move-result-object v2
+              invoke-virtual {v1, v2}, Landroid/content/ClipboardManager;->setPrimaryClip(Landroid/content/ClipData;)V
+              :try_end
+              .catch Ljava/lang/Throwable; {:try_start .. :try_end} :catch_ignore
+
+          :catch_ignore
+              iget-object v0, p0, Ldev/senditpilot/hook/ServerLicenseClient$CrashHandler;->prev:Ljava/lang/Thread$UncaughtExceptionHandler;
+              if-eqz v0, :cond_exit
+              invoke-interface {v0, p1, p2}, Ljava/lang/Thread$UncaughtExceptionHandler;->uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V
+          :cond_exit
+              return-void
+          .end method
+          """
+          crash_smali = "\n".join(line[10:] if line.startswith("          ") else line for line in crash_smali.splitlines()) + "\n"
+          with open(os.path.join(hook_dir, "ServerLicenseClient$CrashHandler.smali"), "w", encoding="utf-8") as f:
+              f.write(crash_smali)
 
           # 4. تعديل LicenseGuard.smali لقبول التفعيل
           guard_path = os.path.join(hook_dir, "LicenseGuard.smali")
