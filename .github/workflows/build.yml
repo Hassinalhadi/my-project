@@ -417,9 +417,21 @@ jobs:
               f.write(smali)
           EOF
 
-      - name: Rebuild APK
+      - name: Rebuild APK & Restore META-INF/xposed
         run: |
           java -jar tools/apktool.jar b decompiled_apk -o unsigned.apk
+          python3 - <<'PYEOF'
+          import zipfile
+
+          with zipfile.ZipFile("MGS131_Final.apk", "r") as src_apk,                zipfile.ZipFile("unsigned.apk", "a", compression=zipfile.ZIP_DEFLATED) as dst_apk:
+              existing = set(dst_apk.namelist())
+              restored = 0
+              for name in src_apk.namelist():
+                  if name.startswith("META-INF/xposed/") and not name.endswith("/") and name not in existing:
+                      dst_apk.writestr(name, src_apk.read(name))
+                      restored += 1
+              print(f"Restored {restored} META-INF/xposed/ file(s) into unsigned.apk")
+          PYEOF
 
       - name: Sign APK
         run: |
