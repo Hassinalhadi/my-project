@@ -384,7 +384,8 @@ jobs:
                   reg_str = m.group(1)
                   reg_key = m.group(2)
                   hook_code = (
-                      f"iget-object v0, p0, Lp/b;->b:Landroid/app/Activity;\n"
+                      f"move-object/from16 v0, p0\n"
+                      f"    iget-object v0, v0, Lp/b;->b:Landroid/app/Activity;\n"
                       f"    move-object/from16 v1, {reg_key}\n"
                       f"    invoke-static {{v0, v1}}, Ldev/senditpilot/hook/ServerLicenseClient;->activateFromActivity(Landroid/app/Activity;Ljava/lang/String;)V\n"
                       f"    return-void\n\n    "
