@@ -293,6 +293,35 @@ jobs:
               with open(guard_path, "w", encoding="utf-8") as f:
                   f.write(guard)
               print("Patched LicenseGuard;->a()Z")
+
+          # 5. تجاوز فحص التوقيع الرقمي (Anti-Tamper) في Lp/G.smali لمنع الكراش الفوري
+          g_path = "decompiled_ags/smali/p/G.smali"
+          if os.path.isfile(g_path):
+              with open(g_path, "r", encoding="utf-8") as f:
+                  g_smali = f.read()
+              g_smali, c1 = re.subn(
+                  r"(\.method[^
+]*B\(Landroid/content/Context;\)Z
+)(.*?)(
+\.end method)",
+                  r"\1    .locals 1\n    const/4 v0, 0x1\n    return v0\3",
+                  g_smali,
+                  flags=re.DOTALL,
+              )
+              g_smali, c2 = re.subn(
+                  r"(\.method[^
+]*z\(Landroid/app/Activity;\)I
+)(.*?)(
+\.end method)",
+                  r"\1    .locals 1\n    const/4 v0, 0x0\n    return v0\3",
+                  g_smali,
+                  flags=re.DOTALL,
+              )
+              with open(g_path, "w", encoding="utf-8") as f:
+                  f.write(g_smali)
+              print(f"Patched p/G.smali anti-tamper: B={c1}, z={c2}")
+          else:
+              print("Warning: decompiled_ags/smali/p/G.smali not found!")
           EOF
 
       - name: Rebuild AGS APK & Restore META-INF/xposed
@@ -306,7 +335,7 @@ jobs:
               existing = set(dst_apk.namelist())
               restored = 0
               for name in src_apk.namelist():
-                  if name.startswith("META-INF/xposed/") and not name.endswith("/") and name not in existing:
+                  if (name.startswith("META-INF/xposed/") or name.startswith("dummy_assets/")) and not name.endswith("/") and name not in existing:
                       dst_apk.writestr(name, src_apk.read(name))
                       restored += 1
               print(f"Restored {restored} META-INF/xposed/ file(s) into unsigned_ags.apk")
