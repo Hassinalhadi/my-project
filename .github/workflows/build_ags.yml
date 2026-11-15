@@ -123,6 +123,54 @@ jobs:
               return v0
           .end method
 
+          .method public static activateFromActivity(Landroid/app/Activity;Ljava/lang/String;)V
+              .locals 4
+              invoke-virtual {p0}, Landroid/content/Context;->getContentResolver()Landroid/content/ContentResolver;
+              move-result-object v0
+              const-string v1, "android_id"
+              invoke-static {v0, v1}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v0
+              if-nez v0, :cond_has_id
+              const-string v0, "ags-device"
+
+          :cond_has_id
+              invoke-static {p1, v0}, Ldev/senditpilot/hook/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)Z
+              move-result v1
+              if-eqz v1, :cond_fail
+
+              const-string v1, "dev.senditpilot_settings"
+              const/4 v2, 0x0
+              invoke-virtual {p0, v1, v2}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+              move-result-object v1
+              invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+              move-result-object v1
+              const-string v3, "license_key"
+              invoke-interface {v1, v3, p1}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+              const-string v3, "license_device_id"
+              invoke-interface {v1, v3, v0}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+              const-string v0, "Activated!"
+              invoke-static {p0, v0, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+              move-result-object v0
+              invoke-virtual {v0}, Landroid/widget/Toast;->show()V
+
+              new-instance v0, Landroid/content/Intent;
+              const-class v1, Ldev/senditpilot/SettingsActivity;
+              invoke-direct {v0, p0, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+              invoke-virtual {p0, v0}, Landroid/app/Activity;->startActivity(Landroid/content/Intent;)V
+              invoke-virtual {p0}, Landroid/app/Activity;->finish()V
+              return-void
+
+          :cond_fail
+              const/4 v1, 0x0
+              const-string v0, "Activation Key not accepted"
+              invoke-static {p0, v0, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+              move-result-object v0
+              invoke-virtual {v0}, Landroid/widget/Toast;->show()V
+              return-void
+          .end method
+
           .method public static verifyKey(Ljava/lang/String;Ljava/lang/String;)Z
               .locals 7
               const/4 v0, 0x0
@@ -322,6 +370,32 @@ jobs:
               print(f"Patched p/G.smali anti-tamper: B={c1}, z={c2}, g={c3}")
           else:
               print("Warning: decompiled_ags/smali/p/G.smali not found!")
+
+          # 6. ربط زر Activate في Lp/b.smali بـ ServerLicenseClient.activateFromActivity
+          b_path = "decompiled_ags/smali/p/b.smali"
+          if os.path.isfile(b_path):
+              with open(b_path, "r", encoding="utf-8") as f:
+                  b_smali = f.read()
+              m = re.search(
+                  r'const-string\s+(v\d+),\s*"AGSAK1\."\s*\n\s*invoke-virtual\s+\{(v\d+),\s*\1\},\s*Ljava/lang/String;->startsWith',
+                  b_smali,
+              )
+              if m:
+                  reg_str = m.group(1)
+                  reg_key = m.group(2)
+                  hook_code = (
+                      f"iget-object {reg_str}, p0, Lp/b;->b:Landroid/app/Activity;\n"
+                      f"    invoke-static {{{reg_str}, {reg_key}}}, Ldev/senditpilot/hook/ServerLicenseClient;->activateFromActivity(Landroid/app/Activity;Ljava/lang/String;)V\n"
+                      f"    return-void\n\n    "
+                  )
+                  b_smali = b_smali[:m.start()] + hook_code + b_smali[m.start():]
+                  with open(b_path, "w", encoding="utf-8") as f:
+                      f.write(b_smali)
+                  print(f"Patched Lp/b;->onClick using key register {reg_key}")
+              else:
+                  print("Warning: AGSAK1. startsWith pattern not found in Lp/b.smali!")
+          else:
+              print("Warning: decompiled_ags/smali/p/b.smali not found!")
           EOF
 
       - name: Rebuild AGS APK & Restore META-INF/xposed
