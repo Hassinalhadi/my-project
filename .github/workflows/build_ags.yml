@@ -307,13 +307,19 @@ jobs:
               )
               g_smali, c2 = re.subn(
                   r"(\.method[^\n]*\bz\(Landroid/app/Activity;\)I\n)(.*?)(\n\.end method)",
+                  r"\1    .locals 1\n    const/4 v0, 0x1\n    return v0\3",
+                  g_smali,
+                  flags=re.DOTALL,
+              )
+              g_smali, c3 = re.subn(
+                  r"(\.method[^\n]*\bg\(\)Z\n)(.*?)(\n\.end method)",
                   r"\1    .locals 1\n    const/4 v0, 0x0\n    return v0\3",
                   g_smali,
                   flags=re.DOTALL,
               )
               with open(g_path, "w", encoding="utf-8") as f:
                   f.write(g_smali)
-              print(f"Patched p/G.smali anti-tamper: B={c1}, z={c2}")
+              print(f"Patched p/G.smali anti-tamper: B={c1}, z={c2}, g={c3}")
           else:
               print("Warning: decompiled_ags/smali/p/G.smali not found!")
           EOF
