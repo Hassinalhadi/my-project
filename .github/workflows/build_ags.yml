@@ -300,19 +300,13 @@ jobs:
               with open(g_path, "r", encoding="utf-8") as f:
                   g_smali = f.read()
               g_smali, c1 = re.subn(
-                  r"(\.method[^
-]*B\(Landroid/content/Context;\)Z
-)(.*?)(
-\.end method)",
+                  r"(\.method[^\n]*\bB\(Landroid/content/Context;\)Z\n)(.*?)(\n\.end method)",
                   r"\1    .locals 1\n    const/4 v0, 0x1\n    return v0\3",
                   g_smali,
                   flags=re.DOTALL,
               )
               g_smali, c2 = re.subn(
-                  r"(\.method[^
-]*z\(Landroid/app/Activity;\)I
-)(.*?)(
-\.end method)",
+                  r"(\.method[^\n]*\bz\(Landroid/app/Activity;\)I\n)(.*?)(\n\.end method)",
                   r"\1    .locals 1\n    const/4 v0, 0x0\n    return v0\3",
                   g_smali,
                   flags=re.DOTALL,
