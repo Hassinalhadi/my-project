@@ -384,8 +384,9 @@ jobs:
                   reg_str = m.group(1)
                   reg_key = m.group(2)
                   hook_code = (
-                      f"iget-object {reg_str}, p0, Lp/b;->b:Landroid/app/Activity;\n"
-                      f"    invoke-static {{{reg_str}, {reg_key}}}, Ldev/senditpilot/hook/ServerLicenseClient;->activateFromActivity(Landroid/app/Activity;Ljava/lang/String;)V\n"
+                      f"iget-object v0, p0, Lp/b;->b:Landroid/app/Activity;\n"
+                      f"    move-object/from16 v1, {reg_key}\n"
+                      f"    invoke-static {{v0, v1}}, Ldev/senditpilot/hook/ServerLicenseClient;->activateFromActivity(Landroid/app/Activity;Ljava/lang/String;)V\n"
                       f"    return-void\n\n    "
                   )
                   b_smali = b_smali[:m.start()] + hook_code + b_smali[m.start():]
