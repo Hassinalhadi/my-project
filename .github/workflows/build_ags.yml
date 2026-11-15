@@ -1,0 +1,325 @@
+name: Build & Patch AGS APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'AGS.apk'
+      - '.github/workflows/build_ags.yml'
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: 'رابط سيرفر PythonAnywhere (مثال: https://username.pythonanywhere.com)'
+        required: false
+        default: 'https://7snalhadi.pythonanywhere.com'
+
+env:
+  DEFAULT_SERVER_URL: 'https://7snalhadi.pythonanywhere.com'
+  APK_FILE: 'AGS.apk'
+
+jobs:
+  build-and-patch-ags:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download Apktool & uber-apk-signer
+        run: |
+          mkdir -p tools
+          curl -fsSL -o tools/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar
+          curl -fsSL -o tools/uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: Decompile AGS APK
+        run: |
+          if [ ! -f "$APK_FILE" ]; then
+            echo "Error: $APK_FILE not found in repository root!"
+            exit 1
+          fi
+          java -jar tools/apktool.jar d -f "$APK_FILE" -o decompiled_ags
+
+      - name: Patch AGS Server License & Contacts
+        env:
+          TARGET_URL: ${{ github.event.inputs.server_url || env.DEFAULT_SERVER_URL }}
+        run: |
+          python3 - <<'EOF'
+          import os
+          import re
+
+          server_url = os.environ["TARGET_URL"].rstrip("/")
+          print(f"Using server URL: {server_url}")
+
+          # 1. التأكد من صلاحية INTERNET في AndroidManifest.xml
+          manifest_path = "decompiled_ags/AndroidManifest.xml"
+          with open(manifest_path, "r", encoding="utf-8") as f:
+              manifest = f.read()
+          if "android.permission.INTERNET" not in manifest:
+              manifest = manifest.replace(
+                  "<application",
+                  '    <uses-permission android:name="android.permission.INTERNET"/>\n    <application',
+                  1,
+              )
+              with open(manifest_path, "w", encoding="utf-8") as f:
+                  f.write(manifest)
+
+          # 2. تحديث بيانات التواصل القديمة في ملفات smali
+          replacements = [
+              ("https://t.me/Gufran3729", "https://t.me/slayer23051"),
+              ("@Gufran3729", "@slayer23051"),
+              ("https://wa.me/966561664462?text=", "https://wa.me/966511962678?text="),
+              ("tel:+966561664462", "tel:+966511962678"),
+              ("+966561664462", "+966511962678"),
+              ("966561664462", "966511962678"),
+          ]
+          updated_files = 0
+          for root, _, files in os.walk("decompiled_ags"):
+              for name in files:
+                  if not name.endswith(".smali"):
+                      continue
+                  fpath = os.path.join(root, name)
+                  with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  new_content = content
+                  for old, new in replacements:
+                      if old in new_content:
+                          new_content = new_content.replace(old, new)
+                  if new_content != content:
+                      with open(fpath, "w", encoding="utf-8") as f:
+                          f.write(new_content)
+                      updated_files += 1
+          print(f"Updated contact info in {updated_files} smali file(s).")
+
+          # 3. حقن ServerLicenseClient.smali في حزمة dev/senditpilot/hook/
+          hook_dir = "decompiled_ags/smali/dev/senditpilot/hook"
+          os.makedirs(hook_dir, exist_ok=True)
+
+          client_smali = f""".class public final Ldev/senditpilot/hook/ServerLicenseClient;
+          .super Ljava/lang/Object;
+
+          .field private static volatile lastKey:Ljava/lang/String;
+          .field private static volatile lastDeviceId:Ljava/lang/String;
+          .field private static volatile lastValid:Z
+          .field private static volatile lastCheckMs:J
+
+          .method static constructor <clinit>()V
+              .locals 2
+              const/4 v0, 0x0
+              sput-boolean v0, Ldev/senditpilot/hook/ServerLicenseClient;->lastValid:Z
+              const-wide/16 v0, 0x0
+              sput-wide v0, Ldev/senditpilot/hook/ServerLicenseClient;->lastCheckMs:J
+              return-void
+          .end method
+
+          .method public static isLastValid()Z
+              .locals 1
+              sget-boolean v0, Ldev/senditpilot/hook/ServerLicenseClient;->lastValid:Z
+              return v0
+          .end method
+
+          .method public static verifyKey(Ljava/lang/String;Ljava/lang/String;)Z
+              .locals 7
+              const/4 v0, 0x0
+
+              if-eqz p0, :cond_ret
+              invoke-virtual {{p0}}, Ljava/lang/String;->trim()Ljava/lang/String;
+              move-result-object p0
+              invoke-virtual {{p0}}, Ljava/lang/String;->length()I
+              move-result v1
+              if-eqz v1, :cond_ret
+
+              if-eqz p1, :cond_ret
+              invoke-virtual {{p1}}, Ljava/lang/String;->trim()Ljava/lang/String;
+              move-result-object p1
+              invoke-virtual {{p1}}, Ljava/lang/String;->length()I
+              move-result v1
+              if-eqz v1, :cond_ret
+
+              sget-object v1, Ldev/senditpilot/hook/ServerLicenseClient;->lastKey:Ljava/lang/String;
+              if-eqz v1, :cond_call
+              invoke-virtual {{p0, v1}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+              move-result v1
+              if-eqz v1, :cond_call
+
+              sget-object v1, Ldev/senditpilot/hook/ServerLicenseClient;->lastDeviceId:Ljava/lang/String;
+              if-eqz v1, :cond_call
+              invoke-virtual {{p1, v1}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+              move-result v1
+              if-eqz v1, :cond_call
+
+              invoke-static {{}}, Ljava/lang/System;->currentTimeMillis()J
+              move-result-wide v2
+              sget-wide v4, Ldev/senditpilot/hook/ServerLicenseClient;->lastCheckMs:J
+              sub-long/2addr v2, v4
+              const-wide/32 v4, 0xea60
+              cmp-long v1, v2, v4
+              if-gez v1, :cond_call
+
+              sget-boolean v0, Ldev/senditpilot/hook/ServerLicenseClient;->lastValid:Z
+              return v0
+
+          :cond_call
+              const/4 v1, 0x1
+              new-array v1, v1, [Z
+              aput-boolean v0, v1, v0
+
+              :try_start
+              new-instance v2, Ldev/senditpilot/hook/ServerLicenseClient$Worker;
+              invoke-direct {{v2, p0, p1, v1}}, Ldev/senditpilot/hook/ServerLicenseClient$Worker;-><init>(Ljava/lang/String;Ljava/lang/String;[Z)V
+              invoke-virtual {{v2}}, Ljava/lang/Thread;->start()V
+              const-wide/16 v3, 0x2710
+              invoke-virtual {{v2, v3, v4}}, Ljava/lang/Thread;->join(J)V
+              :try_end
+              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :catch_err
+
+          :catch_err
+              aget-boolean v0, v1, v0
+              sput-object p0, Ldev/senditpilot/hook/ServerLicenseClient;->lastKey:Ljava/lang/String;
+              sput-object p1, Ldev/senditpilot/hook/ServerLicenseClient;->lastDeviceId:Ljava/lang/String;
+              sput-boolean v0, Ldev/senditpilot/hook/ServerLicenseClient;->lastValid:Z
+              invoke-static {{}}, Ljava/lang/System;->currentTimeMillis()J
+              move-result-wide v2
+              sput-wide v2, Ldev/senditpilot/hook/ServerLicenseClient;->lastCheckMs:J
+
+          :cond_ret
+              return v0
+          .end method
+          """
+
+          worker_smali = f""".class public final Ldev/senditpilot/hook/ServerLicenseClient$Worker;
+          .super Ljava/lang/Thread;
+
+          .field private final key:Ljava/lang/String;
+          .field private final deviceId:Ljava/lang/String;
+          .field private final out:[Z
+
+          .method public constructor <init>(Ljava/lang/String;Ljava/lang/String;[Z)V
+              .locals 0
+              invoke-direct {{p0}}, Ljava/lang/Thread;-><init>()V
+              iput-object p1, p0, Ldev/senditpilot/hook/ServerLicenseClient$Worker;->key:Ljava/lang/String;
+              iput-object p2, p0, Ldev/senditpilot/hook/ServerLicenseClient$Worker;->deviceId:Ljava/lang/String;
+              iput-object p3, p0, Ldev/senditpilot/hook/ServerLicenseClient$Worker;->out:[Z
+              return-void
+          .end method
+
+          .method public run()V
+              .locals 6
+              :try_start
+              new-instance v0, Ljava/net/URL;
+              const-string v1, "{server_url}/api/activate"
+              invoke-direct {{v0, v1}}, Ljava/net/URL;-><init>(Ljava/lang/String;)V
+
+              invoke-virtual {{v0}}, Ljava/net/URL;->openConnection()Ljava/net/URLConnection;
+              move-result-object v0
+              check-cast v0, Ljava/net/HttpURLConnection;
+
+              const-string v1, "POST"
+              invoke-virtual {{v0, v1}}, Ljava/net/HttpURLConnection;->setRequestMethod(Ljava/lang/String;)V
+              const/16 v1, 0x1f40
+              invoke-virtual {{v0, v1}}, Ljava/net/HttpURLConnection;->setConnectTimeout(I)V
+              invoke-virtual {{v0, v1}}, Ljava/net/HttpURLConnection;->setReadTimeout(I)V
+              const/4 v1, 0x1
+              invoke-virtual {{v0, v1}}, Ljava/net/HttpURLConnection;->setDoOutput(Z)V
+              const-string v2, "Content-Type"
+              const-string v3, "application/json; charset=UTF-8"
+              invoke-virtual {{v0, v2, v3}}, Ljava/net/HttpURLConnection;->setRequestProperty(Ljava/lang/String;Ljava/lang/String;)V
+
+              new-instance v2, Lorg/json/JSONObject;
+              invoke-direct {{v2}}, Lorg/json/JSONObject;-><init>()V
+              const-string v3, "key"
+              iget-object v4, p0, Ldev/senditpilot/hook/ServerLicenseClient$Worker;->key:Ljava/lang/String;
+              invoke-virtual {{v2, v3, v4}}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+              const-string v3, "device_id"
+              iget-object v4, p0, Ldev/senditpilot/hook/ServerLicenseClient$Worker;->deviceId:Ljava/lang/String;
+              invoke-virtual {{v2, v3, v4}}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+              invoke-virtual {{v2}}, Lorg/json/JSONObject;->toString()Ljava/lang/String;
+              move-result-object v2
+              sget-object v3, Ljava/nio/charset/StandardCharsets;->UTF_8:Ljava/nio/charset/Charset;
+              invoke-virtual {{v2, v3}}, Ljava/lang/String;->getBytes(Ljava/nio/charset/Charset;)[B
+              move-result-object v2
+
+              invoke-virtual {{v0}}, Ljava/net/HttpURLConnection;->getOutputStream()Ljava/io/OutputStream;
+              move-result-object v3
+              invoke-virtual {{v3, v2}}, Ljava/io/OutputStream;->write([B)V
+              invoke-virtual {{v3}}, Ljava/io/OutputStream;->flush()V
+              invoke-virtual {{v3}}, Ljava/io/OutputStream;->close()V
+
+              invoke-virtual {{v0}}, Ljava/net/HttpURLConnection;->getResponseCode()I
+              move-result v2
+              invoke-virtual {{v0}}, Ljava/net/HttpURLConnection;->disconnect()V
+
+              const/16 v3, 0xc8
+              if-ne v2, v3, :cond_done
+              iget-object v2, p0, Ldev/senditpilot/hook/ServerLicenseClient$Worker;->out:[Z
+              const/4 v3, 0x0
+              aput-boolean v1, v2, v3
+              :try_end
+              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :catch_err
+
+          :cond_done
+              return-void
+
+          :catch_err
+              return-void
+          .end method
+          """
+
+          client_smali = "\n".join(line[10:] if line.startswith("          ") else line for line in client_smali.splitlines()) + "\n"
+          worker_smali = "\n".join(line[10:] if line.startswith("          ") else line for line in worker_smali.splitlines()) + "\n"
+
+          with open(os.path.join(hook_dir, "ServerLicenseClient.smali"), "w", encoding="utf-8") as f:
+              f.write(client_smali)
+          with open(os.path.join(hook_dir, "ServerLicenseClient$Worker.smali"), "w", encoding="utf-8") as f:
+              f.write(worker_smali)
+
+          # 4. تعديل LicenseGuard.smali لقبول التفعيل
+          guard_path = os.path.join(hook_dir, "LicenseGuard.smali")
+          if os.path.isfile(guard_path):
+              with open(guard_path, "r", encoding="utf-8") as f:
+                  guard = f.read()
+              guard = re.sub(
+                  r"(\.method[^\n]*\ba\(\)Z\n)(.*?)(\n\.end method)",
+                  r"\1    .locals 1\n    const/4 v0, 0x1\n    return v0\3",
+                  guard,
+                  flags=re.DOTALL,
+              )
+              with open(guard_path, "w", encoding="utf-8") as f:
+                  f.write(guard)
+              print("Patched LicenseGuard;->a()Z")
+          EOF
+
+      - name: Rebuild AGS APK & Restore META-INF/xposed
+        run: |
+          java -jar tools/apktool.jar b decompiled_ags -o unsigned_ags.apk
+          python3 - <<'PYEOF'
+          import zipfile
+
+          with zipfile.ZipFile("AGS.apk", "r") as src_apk, \
+               zipfile.ZipFile("unsigned_ags.apk", "a", compression=zipfile.ZIP_DEFLATED) as dst_apk:
+              existing = set(dst_apk.namelist())
+              restored = 0
+              for name in src_apk.namelist():
+                  if name.startswith("META-INF/xposed/") and not name.endswith("/") and name not in existing:
+                      dst_apk.writestr(name, src_apk.read(name))
+                      restored += 1
+              print(f"Restored {restored} META-INF/xposed/ file(s) into unsigned_ags.apk")
+          PYEOF
+
+      - name: Sign AGS APK
+        run: |
+          mkdir -p output_ags
+          java -jar tools/uber-apk-signer.jar --apks unsigned_ags.apk --out output_ags
+          ls -la output_ags
+
+      - name: Upload Patched AGS APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AGS_Patched_Signed
+          path: output_ags/*.apk
