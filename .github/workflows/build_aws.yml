@@ -62,29 +62,7 @@ jobs:
           hook_dir = "decompiled_aws/smali_classes3/com/driver/assistant/hook"
           os.makedirs(hook_dir, exist_ok=True)
 
-          orig_cert_b64 = (
-              "MIIDazCCAlOgAwIBAgIINhWTDIAqrFEwDQYJKoZIhvcNAQEMBQAwZDELMAkGA1UE"
-              "BhMCRUcxDjAMBgNVBAgTBUNhaXJvMQ4wDAYDVQQHEwVDYWlybzEPMA0GA1UEChMG"
-              "WHBvc2VkMRAwDgYDVQQLEwdBbmRyb2lkMRIwEAYDVQQDEwlBbGkgU2FtaXIwHhcN"
-              "MjQxMjMxMjIwMDAwWhcNNDkxMjMxMjIwMDAwWjBkMQswCQYDVQQGEwJFRzEOMAwG"
-              "A1UECBMFQ2Fpcm8xDjAMBgNVBAcTBUNhaXJvMQ8wDQYDVQQKEwZYcG9zZWQxEDAOB"
-              "gNVBAsTB0FuZHJvaWQxEjAQBgNVBAMTCUFsaSBTYW1pcjCCASIwDQYJKoZIhvcNA"
-              "QEBBQADggEPADCCAQoCggEBAKqq6h7EBhH1QdsYwCfo+GBplcz+Jq7PNHEfvxM+"
-              "R9DIoPAwhg27tibmUJjXu8360Z9xd8Wx3grjzue4fTVwx77D2sPaMuKEWceoVd8"
-              "6cNQivEIdE4oebsgfR7I5jh4Hwph39w1GjEpVznk32KBXyqnmoUDpPaVBMNu9As"
-              "E8TFJyrD5gxB0d3cjfuUIR8ljv2vnYz9kVV2+emV2CvktZyyD+HoNdJChragbu6"
-              "ws0RDGAoMjUAd3C1mv29u+98K+UqEcjFEJWS96TXBjf8p1X3DnVwvUVy3crZ7V6"
-              "pxdIub3z9faieSgzp7ZqGLqwvgdN4OuRT+yrpkBclphlvsw0o1cCAwEAAaMhMB8"
-              "wHQYDVR0OBBYEFKix/f0QiKd1W9anl5UBgdwGLEYfMA0GCSqGSIb3DQEBDAUAA4"
-              "IBAQCjClbxizfztGGQ3aLFAyxPUd9HiDOWCXW3Ac3+AECawX0JSG+nqbj4+R0wR"
-              "fSlbP9us+XPsbXqYjxBePnXRp8pSKVTvBezHYnrjT7XDKTr0KJmNc3+ahLttxAh"
-              "e+3gOy5S9ua173VYk8VgIubIdUY242iE1OSAXkurQmLEcMuXPCtKs7Tast2Skfi"
-              "j49dQ9ty3JZTxV7bpAKgGrq14jCdN2FyTcCxf8GUBTAaZxpuDq6JndvwtEPt6KX"
-              "rUuij8MLyNkFPZMe8ZRpGqU8cJGYAqmLRyx6Q5eZhStQav4gq5O+zNL1PnZXRqI"
-              "LmsEm3UYrtLa4DMozlRCPAIuO2Z+6po"
-          )
-
-          client_smali = textwrap.dedent(f"""\
+          client_smali = textwrap.dedent("""\
           .class public final Lcom/driver/assistant/hook/ServerLicenseClient;
           .super Ljava/lang/Object;
 
@@ -92,13 +70,11 @@ jobs:
           .field private static volatile lastDeviceId:Ljava/lang/String;
           .field private static volatile lastValid:Z
           .field private static volatile lastCheckMs:J
-          .field private static volatile sigHooked:Z
 
           .method static constructor <clinit>()V
               .locals 2
               const/4 v0, 0x0
               sput-boolean v0, Lcom/driver/assistant/hook/ServerLicenseClient;->lastValid:Z
-              sput-boolean v0, Lcom/driver/assistant/hook/ServerLicenseClient;->sigHooked:Z
               const-wide/16 v0, 0x0
               sput-wide v0, Lcom/driver/assistant/hook/ServerLicenseClient;->lastCheckMs:J
               return-void
@@ -106,41 +82,16 @@ jobs:
 
           .method public static installCrashReporter(Landroid/content/Context;)V
               .locals 2
-              if-nez p0, :cond_ok
-              return-void
-          :cond_ok
-              invoke-virtual {{p0}}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
+              if-eqz p0, :cond_null
+              invoke-virtual {p0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
               move-result-object v0
+              goto :cond_set
+          :cond_null
+              const/4 v0, 0x0
+          :cond_set
               new-instance v1, Lcom/driver/assistant/hook/ServerLicenseClient$CrashHandler;
-              invoke-direct {{v1, v0}}, Lcom/driver/assistant/hook/ServerLicenseClient$CrashHandler;-><init>(Landroid/content/Context;)V
-              invoke-static {{v1}}, Ljava/lang/Thread;->setDefaultUncaughtExceptionHandler(Ljava/lang/Thread$UncaughtExceptionHandler;)V
-              return-void
-          .end method
-
-          .method public static installSignatureSpoof()V
-              .locals 4
-              sget-boolean v0, Lcom/driver/assistant/hook/ServerLicenseClient;->sigHooked:Z
-              if-eqz v0, :cond_do
-              return-void
-          :cond_do
-              const/4 v0, 0x1
-              sput-boolean v0, Lcom/driver/assistant/hook/ServerLicenseClient;->sigHooked:Z
-              :try_start
-              sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
-              const/16 v1, 0x1c
-              if-lt v0, v1, :cond_end
-              const-class v0, Landroid/content/pm/SigningInfo;
-              const-string v1, "getApkContentsSigners"
-              const/4 v2, 0x0
-              new-array v2, v2, [Ljava/lang/Class;
-              invoke-virtual {{v0, v1, v2}}, Ljava/lang/Class;->getDeclaredMethod(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;
-              move-result-object v0
-              new-instance v1, Lcom/driver/assistant/hook/ServerLicenseClient$SigHook;
-              invoke-direct {{v1}}, Lcom/driver/assistant/hook/ServerLicenseClient$SigHook;-><init>()V
-              invoke-static {{v0, v1}}, Ltop/canyie/pine/Pine;->hook(Ljava/lang/reflect/Member;Ltop/canyie/pine/callback/MethodHook;)Ltop/canyie/pine/callback/MethodHook$Unhook;
-              :try_end
-              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :cond_end
-          :cond_end
+              invoke-direct {v1, v0}, Lcom/driver/assistant/hook/ServerLicenseClient$CrashHandler;-><init>(Landroid/content/Context;)V
+              invoke-static {v1}, Ljava/lang/Thread;->setDefaultUncaughtExceptionHandler(Ljava/lang/Thread$UncaughtExceptionHandler;)V
               return-void
           .end method
 
@@ -157,18 +108,18 @@ jobs:
               return-object v0
           :cond_ctx
               :try_start
-              invoke-virtual {{p0}}, Landroid/content/Context;->getContentResolver()Landroid/content/ContentResolver;
+              invoke-virtual {p0}, Landroid/content/Context;->getContentResolver()Landroid/content/ContentResolver;
               move-result-object v0
               const-string v1, "android_id"
-              invoke-static {{v0, v1}}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
+              invoke-static {v0, v1}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
               move-result-object v0
               if-eqz v0, :cond_fb
-              invoke-virtual {{v0}}, Ljava/lang/String;->length()I
+              invoke-virtual {v0}, Ljava/lang/String;->length()I
               move-result v1
               if-lez v1, :cond_fb
               return-object v0
               :try_end
-              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :cond_fb
+              .catch Ljava/lang/Throwable; {:try_start .. :try_end} :cond_fb
           :cond_fb
               const-string v0, "aws-device"
               return-object v0
@@ -180,23 +131,22 @@ jobs:
               if-nez p0, :cond_ctx_ok
               return v0
           :cond_ctx_ok
-              invoke-static {{p0}}, Lcom/driver/assistant/hook/ServerLicenseClient;->installCrashReporter(Landroid/content/Context;)V
-              invoke-static {{}}, Lcom/driver/assistant/hook/ServerLicenseClient;->installSignatureSpoof()V
+              invoke-static {p0}, Lcom/driver/assistant/hook/ServerLicenseClient;->installCrashReporter(Landroid/content/Context;)V
               const-string v1, "com.driver.assistant.Subscription"
-              invoke-virtual {{p0, v1, v0}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+              invoke-virtual {p0, v1, v0}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
               move-result-object v1
               const-string v2, "login_key"
               const/4 v3, 0x0
-              invoke-interface {{v1, v2, v3}}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+              invoke-interface {v1, v2, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
               move-result-object v2
               const-string v0, "subs_device_id"
-              invoke-interface {{v1, v0, v3}}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+              invoke-interface {v1, v0, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
               move-result-object v0
               if-nez v0, :cond_has_dev
-              invoke-static {{p0}}, Lcom/driver/assistant/hook/ServerLicenseClient;->getDeviceId(Landroid/content/Context;)Ljava/lang/String;
+              invoke-static {p0}, Lcom/driver/assistant/hook/ServerLicenseClient;->getDeviceId(Landroid/content/Context;)Ljava/lang/String;
               move-result-object v0
           :cond_has_dev
-              invoke-static {{v2, v0}}, Lcom/driver/assistant/hook/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)Z
+              invoke-static {v2, v0}, Lcom/driver/assistant/hook/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)Z
               move-result v0
               return v0
           .end method
@@ -204,169 +154,169 @@ jobs:
           .method public static activateFromActivity(Landroid/app/Activity;Ljava/lang/String;)V
               .locals 6
               if-eqz p1, :cond_empty
-              invoke-virtual {{p1}}, Ljava/lang/String;->trim()Ljava/lang/String;
+              invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
               move-result-object p1
-              invoke-virtual {{p1}}, Ljava/lang/String;->length()I
+              invoke-virtual {p1}, Ljava/lang/String;->length()I
               move-result v0
               if-lez v0, :cond_empty
 
-              invoke-static {{p0}}, Lcom/driver/assistant/hook/ServerLicenseClient;->getDeviceId(Landroid/content/Context;)Ljava/lang/String;
+              invoke-static {p0}, Lcom/driver/assistant/hook/ServerLicenseClient;->getDeviceId(Landroid/content/Context;)Ljava/lang/String;
               move-result-object v0
-              invoke-static {{p1, v0}}, Lcom/driver/assistant/hook/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)Z
+              invoke-static {p1, v0}, Lcom/driver/assistant/hook/ServerLicenseClient;->verifyKey(Ljava/lang/String;Ljava/lang/String;)Z
               move-result v1
               if-eqz v1, :cond_fail
 
               const-string v1, "com.driver.assistant.Subscription"
               const/4 v2, 0x0
-              invoke-virtual {{p0, v1, v2}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+              invoke-virtual {p0, v1, v2}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
               move-result-object v1
-              invoke-interface {{v1}}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
               move-result-object v1
               const-string v3, "login_key"
-              invoke-interface {{v1, v3, p1}}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1, v3, p1}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
               const-string v3, "subs_device_id"
-              invoke-interface {{v1, v3, v0}}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1, v3, v0}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
               const-string v3, "subs_token"
-              invoke-interface {{v1, v3, p1}}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1, v3, p1}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
               const-string v3, "subs_refresh_token"
-              invoke-interface {{v1, v3, p1}}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1, v3, p1}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
               const-string v3, "subs_user_id"
-              invoke-interface {{v1, v3, v0}}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1, v3, v0}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
               const-string v3, "subs_end_date"
               const-wide v4, 0x3bb2b0c6400L
-              invoke-interface {{v1, v3, v4, v5}}, Landroid/content/SharedPreferences$Editor;->putLong(Ljava/lang/String;J)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1, v3, v4, v5}, Landroid/content/SharedPreferences$Editor;->putLong(Ljava/lang/String;J)Landroid/content/SharedPreferences$Editor;
               const-string v3, "subs_refresh_pending"
-              invoke-interface {{v1, v3, v2}}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
-              invoke-interface {{v1}}, Landroid/content/SharedPreferences$Editor;->commit()Z
+              invoke-interface {v1, v3, v2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
+              invoke-interface {v1}, Landroid/content/SharedPreferences$Editor;->commit()Z
 
               const-string v0, "\u062a\u0645 \u0627\u0644\u062a\u0641\u0639\u064a\u0644 \u0628\u0646\u062c\u0627\u062d!"
-              invoke-static {{p0, v0, v2}}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+              invoke-static {p0, v0, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
               move-result-object v0
-              invoke-virtual {{v0}}, Landroid/widget/Toast;->show()V
+              invoke-virtual {v0}, Landroid/widget/Toast;->show()V
 
               new-instance v0, Landroid/content/Intent;
               const-class v1, Lcom/driver/assistant/ui/main/MainActivity;
-              invoke-direct {{v0, p0, v1}}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-              invoke-virtual {{p0, v0}}, Landroid/app/Activity;->startActivity(Landroid/content/Intent;)V
-              invoke-virtual {{p0}}, Landroid/app/Activity;->finish()V
+              invoke-direct {v0, p0, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+              invoke-virtual {p0, v0}, Landroid/app/Activity;->startActivity(Landroid/content/Intent;)V
+              invoke-virtual {p0}, Landroid/app/Activity;->finish()V
               return-void
 
           :cond_empty
               const/4 v1, 0x0
               const-string v0, "\u0623\u062f\u062e\u0644 \u0645\u0641\u062a\u0627\u062d \u0627\u0644\u062a\u0641\u0639\u064a\u0644 \u0623\u0648\u0644\u0627\u064b"
-              invoke-static {{p0, v0, v1}}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+              invoke-static {p0, v0, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
               move-result-object v0
-              invoke-virtual {{v0}}, Landroid/widget/Toast;->show()V
+              invoke-virtual {v0}, Landroid/widget/Toast;->show()V
               return-void
 
           :cond_fail
               const/4 v1, 0x0
               const-string v0, "\u0645\u0641\u062a\u0627\u062d \u0627\u0644\u062a\u0641\u0639\u064a\u0644 \u063a\u064a\u0631 \u0645\u0642\u0628\u0648\u0644 \u0623\u0648 \u062a\u0639\u0630\u0631 \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u0628\u0627\u0644\u0633\u064a\u0631\u0641\u0631"
-              invoke-static {{p0, v0, v1}}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+              invoke-static {p0, v0, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
               move-result-object v0
-              invoke-virtual {{v0}}, Landroid/widget/Toast;->show()V
+              invoke-virtual {v0}, Landroid/widget/Toast;->show()V
               return-void
           .end method
 
           .method public static buildActivationUi(Landroid/app/Activity;)V
               .locals 10
               new-instance v0, Landroid/widget/LinearLayout;
-              invoke-direct {{v0, p0}}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+              invoke-direct {v0, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
               const/4 v1, 0x1
-              invoke-virtual {{v0, v1}}, Landroid/widget/LinearLayout;->setOrientation(I)V
+              invoke-virtual {v0, v1}, Landroid/widget/LinearLayout;->setOrientation(I)V
               const/16 v2, 0x11
-              invoke-virtual {{v0, v2}}, Landroid/widget/LinearLayout;->setGravity(I)V
+              invoke-virtual {v0, v2}, Landroid/widget/LinearLayout;->setGravity(I)V
               const v3, -0xf0e8d6
-              invoke-virtual {{v0, v3}}, Landroid/widget/LinearLayout;->setBackgroundColor(I)V
+              invoke-virtual {v0, v3}, Landroid/widget/LinearLayout;->setBackgroundColor(I)V
               const/16 v3, 0x38
-              invoke-virtual {{v0, v3, v3, v3, v3}}, Landroid/widget/LinearLayout;->setPadding(IIII)V
+              invoke-virtual {v0, v3, v3, v3, v3}, Landroid/widget/LinearLayout;->setPadding(IIII)V
 
               new-instance v4, Landroid/widget/LinearLayout;
-              invoke-direct {{v4, p0}}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
-              invoke-virtual {{v4, v1}}, Landroid/widget/LinearLayout;->setOrientation(I)V
+              invoke-direct {v4, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+              invoke-virtual {v4, v1}, Landroid/widget/LinearLayout;->setOrientation(I)V
               const v5, -0xe1d6c5
-              invoke-virtual {{v4, v5}}, Landroid/widget/LinearLayout;->setBackgroundColor(I)V
+              invoke-virtual {v4, v5}, Landroid/widget/LinearLayout;->setBackgroundColor(I)V
               const/16 v5, 0x30
-              invoke-virtual {{v4, v5, v5, v5, v5}}, Landroid/widget/LinearLayout;->setPadding(IIII)V
+              invoke-virtual {v4, v5, v5, v5, v5}, Landroid/widget/LinearLayout;->setPadding(IIII)V
 
               new-instance v5, Landroid/widget/TextView;
-              invoke-direct {{v5, p0}}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+              invoke-direct {v5, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
               const-string v6, "AWS Driver Assistant"
-              invoke-virtual {{v5, v6}}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+              invoke-virtual {v5, v6}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
               const/high16 v6, 0x41b00000    # 22.0f
-              invoke-virtual {{v5, v6}}, Landroid/widget/TextView;->setTextSize(F)V
+              invoke-virtual {v5, v6}, Landroid/widget/TextView;->setTextSize(F)V
               const/4 v6, -0x1
-              invoke-virtual {{v5, v6}}, Landroid/widget/TextView;->setTextColor(I)V
-              invoke-virtual {{v5, v2}}, Landroid/widget/TextView;->setGravity(I)V
-              invoke-virtual {{v4, v5}}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
+              invoke-virtual {v5, v6}, Landroid/widget/TextView;->setTextColor(I)V
+              invoke-virtual {v5, v2}, Landroid/widget/TextView;->setGravity(I)V
+              invoke-virtual {v4, v5}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
 
               new-instance v5, Landroid/widget/TextView;
-              invoke-direct {{v5, p0}}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+              invoke-direct {v5, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
               const-string v7, "\u0623\u062f\u062e\u0644 \u0645\u0641\u062a\u0627\u062d \u0627\u0644\u062a\u0641\u0639\u064a\u0644 / Enter Activation Key"
-              invoke-virtual {{v5, v7}}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+              invoke-virtual {v5, v7}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
               const/high16 v7, 0x41600000    # 14.0f
-              invoke-virtual {{v5, v7}}, Landroid/widget/TextView;->setTextSize(F)V
+              invoke-virtual {v5, v7}, Landroid/widget/TextView;->setTextSize(F)V
               const v7, -0x6b5c49
-              invoke-virtual {{v5, v7}}, Landroid/widget/TextView;->setTextColor(I)V
-              invoke-virtual {{v5, v2}}, Landroid/widget/TextView;->setGravity(I)V
+              invoke-virtual {v5, v7}, Landroid/widget/TextView;->setTextColor(I)V
+              invoke-virtual {v5, v2}, Landroid/widget/TextView;->setGravity(I)V
               const/4 v2, 0x0
               const/16 v7, 0x10
               const/16 v8, 0x24
-              invoke-virtual {{v5, v2, v7, v2, v8}}, Landroid/widget/TextView;->setPadding(IIII)V
-              invoke-virtual {{v4, v5}}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
+              invoke-virtual {v5, v2, v7, v2, v8}, Landroid/widget/TextView;->setPadding(IIII)V
+              invoke-virtual {v4, v5}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
 
               new-instance v5, Landroid/widget/EditText;
-              invoke-direct {{v5, p0}}, Landroid/widget/EditText;-><init>(Landroid/content/Context;)V
+              invoke-direct {v5, p0}, Landroid/widget/EditText;-><init>(Landroid/content/Context;)V
               const-string v7, "Activation Key"
-              invoke-virtual {{v5, v7}}, Landroid/widget/EditText;->setHint(Ljava/lang/CharSequence;)V
-              invoke-virtual {{v5, v6}}, Landroid/widget/EditText;->setTextColor(I)V
+              invoke-virtual {v5, v7}, Landroid/widget/EditText;->setHint(Ljava/lang/CharSequence;)V
+              invoke-virtual {v5, v6}, Landroid/widget/EditText;->setTextColor(I)V
               const v7, -0x887766
-              invoke-virtual {{v5, v7}}, Landroid/widget/EditText;->setHintTextColor(I)V
+              invoke-virtual {v5, v7}, Landroid/widget/EditText;->setHintTextColor(I)V
               const v7, -0xf0e8d6
-              invoke-virtual {{v5, v7}}, Landroid/widget/EditText;->setBackgroundColor(I)V
+              invoke-virtual {v5, v7}, Landroid/widget/EditText;->setBackgroundColor(I)V
               const/16 v7, 0x20
               const/16 v8, 0x1c
-              invoke-virtual {{v5, v7, v8, v7, v8}}, Landroid/widget/EditText;->setPadding(IIII)V
-              invoke-virtual {{v5, v1}}, Landroid/widget/EditText;->setSingleLine(Z)V
+              invoke-virtual {v5, v7, v8, v7, v8}, Landroid/widget/EditText;->setPadding(IIII)V
+              invoke-virtual {v5, v1}}, Landroid/widget/EditText;->setSingleLine(Z)V
 
               const-string v1, "com.driver.assistant.Subscription"
-              invoke-virtual {{p0, v1, v2}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+              invoke-virtual {p0, v1, v2}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
               move-result-object v1
               const-string v7, "login_key"
               const/4 v8, 0x0
-              invoke-interface {{v1, v7, v8}}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+              invoke-interface {v1, v7, v8}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
               move-result-object v1
               if-eqz v1, :cond_no_saved
-              invoke-virtual {{v5, v1}}, Landroid/widget/EditText;->setText(Ljava/lang/CharSequence;)V
+              invoke-virtual {v5, v1}, Landroid/widget/EditText;->setText(Ljava/lang/CharSequence;)V
           :cond_no_saved
-              invoke-virtual {{v4, v5}}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
+              invoke-virtual {v4, v5}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
 
               new-instance v1, Landroid/widget/Button;
-              invoke-direct {{v1, p0}}, Landroid/widget/Button;-><init>(Landroid/content/Context;)V
+              invoke-direct {v1, p0}, Landroid/widget/Button;-><init>(Landroid/content/Context;)V
               const-string v7, "\u062a\u0641\u0639\u064a\u0644 / Activate"
-              invoke-virtual {{v1, v7}}, Landroid/widget/Button;->setText(Ljava/lang/CharSequence;)V
-              invoke-virtual {{v1, v6}}, Landroid/widget/Button;->setTextColor(I)V
+              invoke-virtual {v1, v7}, Landroid/widget/Button;->setText(Ljava/lang/CharSequence;)V
+              invoke-virtual {v1, v6}, Landroid/widget/Button;->setTextColor(I)V
               const v6, -0xdd3aa2
-              invoke-virtual {{v1, v6}}, Landroid/widget/Button;->setBackgroundColor(I)V
+              invoke-virtual {v1, v6}, Landroid/widget/Button;->setBackgroundColor(I)V
               new-instance v6, Landroid/widget/LinearLayout$LayoutParams;
               const/4 v7, -0x1
               const/4 v9, -0x2
-              invoke-direct {{v6, v7, v9}}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+              invoke-direct {v6, v7, v9}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
               const/16 v7, 0x24
-              invoke-virtual {{v6, v2, v7, v2, v2}}, Landroid/widget/LinearLayout$LayoutParams;->setMargins(IIII)V
-              invoke-virtual {{v1, v6}}, Landroid/widget/Button;->setLayoutParams(Landroid/view/ViewGroup$LayoutParams;)V
+              invoke-virtual {v6, v2, v7, v2, v2}, Landroid/widget/LinearLayout$LayoutParams;->setMargins(IIII)V
+              invoke-virtual {v1, v6}, Landroid/widget/Button;->setLayoutParams(Landroid/view/ViewGroup$LayoutParams;)V
 
               new-instance v2, Lcom/driver/assistant/hook/ServerLicenseClient$ActivateClickListener;
-              invoke-direct {{v2, p0, v5}}, Lcom/driver/assistant/hook/ServerLicenseClient$ActivateClickListener;-><init>(Landroid/app/Activity;Landroid/widget/EditText;)V
-              invoke-virtual {{v1, v2}}, Landroid/widget/Button;->setOnClickListener(Landroid/view/View$OnClickListener;)V
-              invoke-virtual {{v4, v1}}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
+              invoke-direct {v2, p0, v5}, Lcom/driver/assistant/hook/ServerLicenseClient$ActivateClickListener;-><init>(Landroid/app/Activity;Landroid/widget/EditText;)V
+              invoke-virtual {v1, v2}, Landroid/widget/Button;->setOnClickListener(Landroid/view/View$OnClickListener;)V
+              invoke-virtual {v4, v1}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
 
               new-instance v1, Landroid/widget/LinearLayout$LayoutParams;
               const/4 v2, -0x1
               const/4 v5, -0x2
-              invoke-direct {{v1, v2, v5}}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
-              invoke-virtual {{v0, v4, v1}}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-              invoke-virtual {{p0, v0}}, Landroid/app/Activity;->setContentView(Landroid/view/View;)V
+              invoke-direct {v1, v2, v5}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+              invoke-virtual {v0, v4, v1}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+              invoke-virtual {p0, v0}, Landroid/app/Activity;->setContentView(Landroid/view/View;)V
               return-void
           .end method
 
@@ -375,32 +325,32 @@ jobs:
               const/4 v0, 0x0
 
               if-eqz p0, :cond_ret
-              invoke-virtual {{p0}}, Ljava/lang/String;->trim()Ljava/lang/String;
+              invoke-virtual {p0}, Ljava/lang/String;->trim()Ljava/lang/String;
               move-result-object p0
-              invoke-virtual {{p0}}, Ljava/lang/String;->length()I
+              invoke-virtual {p0}, Ljava/lang/String;->length()I
               move-result v1
               if-eqz v1, :cond_ret
 
               if-eqz p1, :cond_ret
-              invoke-virtual {{p1}}, Ljava/lang/String;->trim()Ljava/lang/String;
+              invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
               move-result-object p1
-              invoke-virtual {{p1}}, Ljava/lang/String;->length()I
+              invoke-virtual {p1}, Ljava/lang/String;->length()I
               move-result v1
               if-eqz v1, :cond_ret
 
               sget-object v1, Lcom/driver/assistant/hook/ServerLicenseClient;->lastKey:Ljava/lang/String;
               if-eqz v1, :cond_call
-              invoke-virtual {{p0, v1}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+              invoke-virtual {p0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
               move-result v1
               if-eqz v1, :cond_call
 
               sget-object v1, Lcom/driver/assistant/hook/ServerLicenseClient;->lastDeviceId:Ljava/lang/String;
               if-eqz v1, :cond_call
-              invoke-virtual {{p1, v1}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+              invoke-virtual {p1, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
               move-result v1
               if-eqz v1, :cond_call
 
-              invoke-static {{}}, Ljava/lang/System;->currentTimeMillis()J
+              invoke-static {}, Ljava/lang/System;->currentTimeMillis()J
               move-result-wide v2
               sget-wide v4, Lcom/driver/assistant/hook/ServerLicenseClient;->lastCheckMs:J
               sub-long/2addr v2, v4
@@ -418,19 +368,19 @@ jobs:
 
               :try_start
               new-instance v2, Lcom/driver/assistant/hook/ServerLicenseClient$Worker;
-              invoke-direct {{v2, p0, p1, v1}}, Lcom/driver/assistant/hook/ServerLicenseClient$Worker;-><init>(Ljava/lang/String;Ljava/lang/String;[Z)V
-              invoke-virtual {{v2}}, Ljava/lang/Thread;->start()V
+              invoke-direct {v2, p0, p1, v1}, Lcom/driver/assistant/hook/ServerLicenseClient$Worker;-><init>(Ljava/lang/String;Ljava/lang/String;[Z)V
+              invoke-virtual {v2}, Ljava/lang/Thread;->start()V
               const-wide/16 v3, 0x2710
-              invoke-virtual {{v2, v3, v4}}, Ljava/lang/Thread;->join(J)V
+              invoke-virtual {v2, v3, v4}, Ljava/lang/Thread;->join(J)V
               :try_end
-              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :catch_err
+              .catch Ljava/lang/Throwable; {:try_start .. :try_end} :catch_err
 
           :catch_err
               aget-boolean v0, v1, v0
               sput-object p0, Lcom/driver/assistant/hook/ServerLicenseClient;->lastKey:Ljava/lang/String;
               sput-object p1, Lcom/driver/assistant/hook/ServerLicenseClient;->lastDeviceId:Ljava/lang/String;
               sput-boolean v0, Lcom/driver/assistant/hook/ServerLicenseClient;->lastValid:Z
-              invoke-static {{}}, Ljava/lang/System;->currentTimeMillis()J
+              invoke-static {}, Ljava/lang/System;->currentTimeMillis()J
               move-result-wide v2
               sput-wide v2, Lcom/driver/assistant/hook/ServerLicenseClient;->lastCheckMs:J
 
@@ -548,36 +498,6 @@ jobs:
           .end method
           """)
 
-          sighook_smali = textwrap.dedent(f"""\
-          .class public final Lcom/driver/assistant/hook/ServerLicenseClient$SigHook;
-          .super Ltop/canyie/pine/callback/MethodHook;
-
-          .method public constructor <init>()V
-              .locals 0
-              invoke-direct {{p0}}, Ltop/canyie/pine/callback/MethodHook;-><init>()V
-              return-void
-          .end method
-
-          .method public afterCall(Ltop/canyie/pine/Pine$CallFrame;)V
-              .locals 3
-              :try_start
-              const-string v0, "{orig_cert_b64}"
-              const/4 v1, 0x0
-              invoke-static {{v0, v1}}, Landroid/util/Base64;->decode(Ljava/lang/String;I)[B
-              move-result-object v0
-              new-instance v2, Landroid/content/pm/Signature;
-              invoke-direct {{v2, v0}}, Landroid/content/pm/Signature;-><init>([B)V
-              const/4 v0, 0x1
-              new-array v0, v0, [Landroid/content/pm/Signature;
-              aput-object v2, v0, v1
-              invoke-virtual {{p1, v0}}, Ltop/canyie/pine/Pine$CallFrame;->setResult(Ljava/lang/Object;)V
-              :try_end
-              .catch Ljava/lang/Throwable; {{:try_start .. :try_end}} :cond_end
-          :cond_end
-              return-void
-          .end method
-          """)
-
           crash_smali = textwrap.dedent("""\
           .class public final Lcom/driver/assistant/hook/ServerLicenseClient$CrashHandler;
           .super Ljava/lang/Object;
@@ -601,7 +521,20 @@ jobs:
               :try_start
               invoke-static {p2}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
               move-result-object v0
+              new-instance v1, Ljava/io/FileWriter;
+              const-string v2, "/storage/emulated/0/Download/aws_crash.txt"
+              invoke-direct {v1, v2}, Ljava/io/FileWriter;-><init>(Ljava/lang/String;)V
+              invoke-virtual {v1, v0}, Ljava/io/FileWriter;->write(Ljava/lang/String;)V
+              invoke-virtual {v1}, Ljava/io/FileWriter;->close()V
+              :try_end
+              .catch Ljava/lang/Throwable; {:try_start .. :try_end} :catch_clip
+
+          :catch_clip
+              :try_start2
               iget-object v1, p0, Lcom/driver/assistant/hook/ServerLicenseClient$CrashHandler;->ctx:Landroid/content/Context;
+              if-eqz v1, :cond_ignore
+              invoke-static {p2}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
+              move-result-object v0
               const-string v2, "clipboard"
               invoke-virtual {v1, v2}, Landroid/content/Context;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
               move-result-object v1
@@ -610,8 +543,8 @@ jobs:
               invoke-static {v2, v0}, Landroid/content/ClipData;->newPlainText(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;
               move-result-object v2
               invoke-virtual {v1, v2}, Landroid/content/ClipboardManager;->setPrimaryClip(Landroid/content/ClipData;)V
-              :try_end
-              .catch Ljava/lang/Throwable; {:try_start .. :try_end} :catch_ignore
+              :try_end2
+              .catch Ljava/lang/Throwable; {:try_start2 .. :try_end2} :catch_ignore
 
           :catch_ignore
               iget-object v0, p0, Lcom/driver/assistant/hook/ServerLicenseClient$CrashHandler;->prev:Ljava/lang/Thread$UncaughtExceptionHandler;
@@ -626,7 +559,6 @@ jobs:
               ("ServerLicenseClient.smali", client_smali),
               ("ServerLicenseClient$Worker.smali", worker_smali),
               ("ServerLicenseClient$ActivateClickListener.smali", click_smali),
-              ("ServerLicenseClient$SigHook.smali", sighook_smali),
               ("ServerLicenseClient$CrashHandler.smali", crash_smali),
           ]:
               with open(os.path.join(hook_dir, fname), "w", encoding="utf-8") as f:
@@ -646,6 +578,21 @@ jobs:
                   hdr = re.sub(r"\bnative\s+", "", m.group(1))
                   return f"{hdr}\n{new_body.strip()}\n{m.group(2)}"
               return re.subn(pattern, _repl, src)
+
+          # تثبيت CrashHandler مبكراً في App.<init>
+          app_path = find_smali("com/driver/assistant/app/App.smali")
+          if app_path:
+              with open(app_path, "r", encoding="utf-8") as f:
+                  app_s = f.read()
+              app_s, c_app = re.subn(
+                  r"(invoke-direct \{p0\}, Landroid/app/Application;-><init>\(\)V)",
+                  r"\1\n    const/4 v0, 0x0\n    invoke-static {v0}, Lcom/driver/assistant/hook/ServerLicenseClient;->installCrashReporter(Landroid/content/Context;)V",
+                  app_s,
+                  count=1,
+              )
+              with open(app_path, "w", encoding="utf-8") as f:
+                  f.write(app_s)
+              print(f"Patched App.<init> CrashHandler: {c_app}")
 
           # 2. تعديل LoginActivityV2.smali لاستبدال شاشة الدخول المعطلة بواجهة التفعيل الجديدة
           login_v2_path = find_smali("com/driver/assistant/ui/login/LoginActivityV2.smali")
