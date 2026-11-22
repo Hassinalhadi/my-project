@@ -670,7 +670,7 @@ jobs:
                   f.write(app_s)
               print(f"Patched App.<clinit> CrashHandler: {c_clinit}")
               app_s = re.sub(r"^(\.class\s+public\s+)final\s+", r"\1", app_s, count=1)
-              app_s = re.sub(r"(\.method\s+)private(\s+native\s+O0ooOooOoO\(\)V)", r"\1public\2", app_s, count=1)
+              app_s = re.sub(r"^\.method\b[^\n]*\bO0ooOooOoO\(\)V", ".method public native O0ooOooOoO()V", app_s, count=1, flags=re.MULTILINE)
               with open(app_path, "w", encoding="utf-8") as f:
                   f.write(app_s)
               print("Made App non-final and O0ooOooOoO public native for HookApp override")
