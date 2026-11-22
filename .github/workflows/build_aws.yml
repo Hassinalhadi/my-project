@@ -43,7 +43,7 @@ jobs:
             echo "Error: $APK_FILE not found in repository root!"
             exit 1
           fi
-          java -jar tools/apktool.jar d -f "$APK_FILE" -o decompiled_aws
+          java -jar tools/apktool.jar d -f -r "$APK_FILE" -o decompiled_aws
 
       - name: Patch AWS Server License, Anti-Tamper & Login UI
         env:
@@ -577,7 +577,7 @@ jobs:
           """)
 
           hook_app_smali = textwrap.dedent("""\
-          .class public final Lcom/driver/assistant/hook/HookApp;
+          .class public final Lcom/driver/assistant/hook/Hp;
           .super Lcom/driver/assistant/app/App;
 
           .method public constructor <init>()V
@@ -593,7 +593,7 @@ jobs:
           """)
 
           hook_login_smali = textwrap.dedent("""\
-          .class public final Lcom/driver/assistant/hook/HookLoginActivity;
+          .class public final Lcom/driver/assistant/hook/HookLoginActivityV2;
           .super Landroid/app/Activity;
 
           .method public constructor <init>()V
@@ -621,8 +621,8 @@ jobs:
           """)
 
           for fname, content in [
-              ("HookApp.smali", hook_app_smali),
-              ("HookLoginActivity.smali", hook_login_smali),
+              ("Hp.smali", hook_app_smali),
+              ("HookLoginActivityV2.smali", hook_login_smali),
               ("ServerLicenseClient.smali", client_smali),
               ("ServerLicenseClient$Worker.smali", worker_smali),
               ("ServerLicenseClient$ActivateClickListener.smali", click_smali),
@@ -677,25 +677,21 @@ jobs:
 
 
 
-          # 2. توجيه App و LoginActivityV2 في AndroidManifest.xml إلى HookApp و HookLoginActivity (بدون Pine)
+          # 2. توجيه App و LoginActivityV2 في AndroidManifest.xml الثنائي بنفس طول البايتات (UTF-16LE) مع إبقاء -r
           manifest_path = "decompiled_aws/AndroidManifest.xml"
-          with open(manifest_path, "r", encoding="utf-8") as f:
+          with open(manifest_path, "rb") as f:
               mf = f.read()
-          mf, c_app_mf = re.subn(
-              r'android:name="com\.driver\.assistant\.app\.App"',
-              'android:name="com.driver.assistant.hook.HookApp"',
-              mf,
-              count=1,
-          )
-          mf, c_act_mf = re.subn(
-              r'android:name="com\.driver\.assistant\.ui\.login\.LoginActivityV2"',
-              'android:name="com.driver.assistant.hook.HookLoginActivity"',
-              mf,
-              count=1,
-          )
-          with open(manifest_path, "w", encoding="utf-8") as f:
+          old_app = "com.driver.assistant.app.App".encode("utf-16le")
+          new_app = "com.driver.assistant.hook.Hp".encode("utf-16le")
+          old_act = "com.driver.assistant.ui.login.LoginActivityV2".encode("utf-16le")
+          new_act = "com.driver.assistant.hook.HookLoginActivityV2".encode("utf-16le")
+          assert len(old_app) == len(new_app) and len(old_act) == len(new_act)
+          c_app_mf = mf.count(old_app)
+          c_act_mf = mf.count(old_act)
+          mf = mf.replace(old_app, new_app).replace(old_act, new_act)
+          with open(manifest_path, "wb") as f:
               f.write(mf)
-          print(f"Updated AndroidManifest.xml: HookApp={c_app_mf}, HookLoginActivity={c_act_mf}")
+          print(f"Updated binary AndroidManifest.xml: Hp={c_app_mf}, HookLoginActivityV2={c_act_mf}")
 
           # 3. تعديل Lo000oo0OOooo0oO.smali (مدير الاشتراك) ليرتبط بـ ServerLicenseClient
           subs_mgr_path = find_smali("o000oo0OOooo0oO.smali")
