@@ -614,14 +614,16 @@ jobs:
               with open(app_path, "w", encoding="utf-8") as f:
                   f.write(app_s)
               print(f"Patched App.<init> CrashHandler: {c_app}")
-              app_s, c_app_hang = replace_smali_method(
+              app_s, c_clinit = re.subn(
+                  r"(\.method static constructor <clinit>\(\)V\s*\n\s*\.locals \d+)",
+                  r"\1\n    const/4 v0, 0x0\n    invoke-static {v0}, Lcom/driver/assistant/hook/ServerLicenseClient;->installCrashReporter(Landroid/content/Context;)V",
                   app_s,
-                  r"O0ooOooOoO\(\)V",
-                  "    .locals 0\n    return-void",
+                  count=1,
               )
               with open(app_path, "w", encoding="utf-8") as f:
                   f.write(app_s)
-              print(f"Neutralized App.O0ooOooOoO (vfork ANR): {c_app_hang}")
+              print(f"Patched App.<clinit> CrashHandler: {c_clinit}")
+
 
           # 2. تعديل LoginActivityV2.smali لاستبدال شاشة الدخول المعطلة بواجهة التفعيل الجديدة
           login_v2_path = find_smali("com/driver/assistant/ui/login/LoginActivityV2.smali")
