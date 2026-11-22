@@ -43,7 +43,7 @@ jobs:
             echo "Error: $APK_FILE not found in repository root!"
             exit 1
           fi
-          java -jar tools/apktool.jar d -f "$APK_FILE" -o decompiled_aws
+          java -jar tools/apktool.jar d -f -r "$APK_FILE" -o decompiled_aws
 
       - name: Patch AWS Server License, Anti-Tamper & Login UI
         env:
@@ -58,20 +58,7 @@ jobs:
           server_url = os.environ["TARGET_URL"].rstrip("/")
           print(f"Using server URL: {server_url}")
 
-          # 1. التأكد من صلاحية INTERNET في AndroidManifest.xml
-          manifest_path = "decompiled_aws/AndroidManifest.xml"
-          with open(manifest_path, "r", encoding="utf-8") as f:
-              manifest = f.read()
-          if "android.permission.INTERNET" not in manifest:
-              manifest = manifest.replace(
-                  "<application",
-                  '    <uses-permission android:name="android.permission.INTERNET"/>\n    <application',
-                  1,
-              )
-              with open(manifest_path, "w", encoding="utf-8") as f:
-                  f.write(manifest)
-
-          # 2. حقن ServerLicenseClient وملحقاته في smali_classes3/com/driver/assistant/hook/
+          # 1. حقن ServerLicenseClient وملحقاته في smali_classes3/com/driver/assistant/hook/
           hook_dir = "decompiled_aws/smali_classes3/com/driver/assistant/hook"
           os.makedirs(hook_dir, exist_ok=True)
 
@@ -653,13 +640,19 @@ jobs:
                       return cand
               return None
 
-          # 3. تعديل LoginActivityV2.smali لاستبدال شاشة الدخول المعطلة بواجهة التفعيل الجديدة
+          def replace_smali_method(src, sig_regex, new_body):
+              pattern = rf"(\.method[^\n]*\b{sig_regex})\r?\n(?:(?!\.end method).*\r?\n)*(\.end method)"
+              def _repl(m):
+                  hdr = re.sub(r"\bnative\s+", "", m.group(1))
+                  return f"{hdr}\n{new_body.strip()}\n{m.group(2)}"
+              return re.subn(pattern, _repl, src)
+
+          # 2. تعديل LoginActivityV2.smali لاستبدال شاشة الدخول المعطلة بواجهة التفعيل الجديدة
           login_v2_path = find_smali("com/driver/assistant/ui/login/LoginActivityV2.smali")
           if login_v2_path:
               with open(login_v2_path, "r", encoding="utf-8") as f:
                   lv2 = f.read()
               new_oncreate = textwrap.dedent("""\
-              .method protected onCreate(Landroid/os/Bundle;)V
                   .locals 2
                   invoke-super {p0, p1}, LooOoOOooOO0Oo0o;->onCreate(Landroid/os/Bundle;)V
                   invoke-static {p0}, Lcom/driver/assistant/hook/ServerLicenseClient;->checkSavedLicense(Landroid/content/Context;)Z
@@ -673,14 +666,8 @@ jobs:
                   return-void
               :cond_show_ui
                   invoke-static {p0}, Lcom/driver/assistant/hook/ServerLicenseClient;->buildActivationUi(Landroid/app/Activity;)V
-                  return-void
-              .end method""")
-              lv2, c_lv2 = re.subn(
-                  r"\.method[^\n]*\bonCreate\(Landroid/os/Bundle;\)V.*?(?=\n\.method|\Z)",
-                  new_oncreate + "\n",
-                  lv2,
-                  flags=re.DOTALL,
-              )
+                  return-void""")
+              lv2, c_lv2 = replace_smali_method(lv2, r"onCreate\(Landroid/os/Bundle;\)V", new_oncreate)
               with open(login_v2_path, "w", encoding="utf-8") as f:
                   f.write(lv2)
               print(f"Patched LoginActivityV2.onCreate ({c_lv2} replacement) in {login_v2_path}")
@@ -688,74 +675,62 @@ jobs:
               print("ERROR: LoginActivityV2.smali not found!")
               exit(1)
 
-          # 4. تعديل Lo000oo0OOooo0oO.smali (مدير الاشتراك) ليرتبط بـ ServerLicenseClient
+          # 3. تعديل Lo000oo0OOooo0oO.smali (مدير الاشتراك) ليرتبط بـ ServerLicenseClient
           subs_mgr_path = find_smali("o000oo0OOooo0oO.smali")
           if subs_mgr_path:
               with open(subs_mgr_path, "r", encoding="utf-8") as f:
                   sm = f.read()
 
-              def replace_method(src, sig_regex, new_body):
-                  return re.subn(
-                      rf"(\.method[^\n]*\b{sig_regex}\n).*?(\n\.end method)",
-                      rf"\1{new_body}\2",
-                      src,
-                      flags=re.DOTALL,
-                  )
-
-              bool_body = "\n    .locals 1\n    invoke-static {}, Lcom/driver/assistant/hook/ServerLicenseClient;->isLastValid()Z\n    move-result v0\n    return v0"
+              bool_body = "    .locals 1\n    invoke-static {}, Lcom/driver/assistant/hook/ServerLicenseClient;->isLastValid()Z\n    move-result v0\n    return v0"
               for mname in ["oOo0ooOOo0", "o0O00O0000", "oOoOOO000o", "o0OooO0o0o"]:
-                  sm, cnt = replace_method(sm, rf"{mname}\([^\)]*\)Z", bool_body)
+                  sm, cnt = replace_smali_method(sm, rf"{mname}\([^\)]*\)Z", bool_body)
                   print(f"Patched Lo000oo0OOooo0oO->{mname}: {cnt}")
 
-              sm, cnt_exp = replace_method(
+              sm, cnt_exp = replace_smali_method(
                   sm,
                   r"oo000o0oO0\([^\)]*\)J",
-                  "\n    .locals 2\n    const-wide v0, 0x3bb2b0c6400L\n    return-wide v0",
+                  "    .locals 2\n    const-wide v0, 0x3bb2b0c6400L\n    return-wide v0",
               )
-              sm, cnt_clr = replace_method(
+              sm, cnt_clr = replace_smali_method(
                   sm,
                   r"oo00O0000O\([^\)]*\)V",
-                  "\n    .locals 0\n    return-void",
+                  "    .locals 1\n    const/4 v0, 0x0\n    return-void",
               )
-              sm, cnt_url = replace_method(
+              sm, cnt_url = replace_smali_method(
                   sm,
                   r"oo0o0oooOo\([^\)]*\)Ljava/lang/String;",
-                  f'\n    .locals 1\n    const-string v0, "{server_url}"\n    return-object v0',
+                  f'    .locals 1\n    const-string v0, "{server_url}"\n    return-object v0',
               )
-              # إزالة كلمة native من الدوال المعدلة
-              sm = re.sub(r"(\.method[^\n]*)\bnative\s+([^\n]*(?:oOo0ooOOo0|o0O00O0000|oOoOOO000o|o0OooO0o0o|oo000o0oO0|oo00O0000O|oo0o0oooOo)\()", r"\1\2", sm)
               with open(subs_mgr_path, "w", encoding="utf-8") as f:
                   f.write(sm)
               print(f"Patched Lo000oo0OOooo0oO (exp={cnt_exp}, clr={cnt_clr}, url={cnt_url})")
           else:
               print("Warning: o000oo0OOooo0oO.smali not found!")
 
-          # 5. تعطيل فحوصات الخلفية /auth/me وتسجيل الخروج التلقائي في LooO0oooo00O0ooo.smali
+          # 4. تعطيل فحوصات الخلفية /auth/me وتسجيل الخروج التلقائي في LooO0oooo00O0ooo.smali
           auth_me_path = find_smali("ooO0oooo00O0ooo.smali")
           if auth_me_path:
               with open(auth_me_path, "r", encoding="utf-8") as f:
                   am = f.read()
               for mname in ["oo00O0000O", "oo0o0oooOo", "OOOOO00Oo0"]:
-                  am, cnt = re.subn(
-                      rf"(\.method[^\n]*\b{mname}\([^\)]*\)V\n).*?(\n\.end method)",
-                      r"\1    .locals 0\n    return-void\2",
+                  am, cnt = replace_smali_method(
                       am,
-                      flags=re.DOTALL,
+                      rf"{mname}\([^\)]*\)V",
+                      "    .locals 0\n    return-void",
                   )
                   print(f"Neutralized LooO0oooo00O0ooo->{mname}: {cnt}")
               with open(auth_me_path, "w", encoding="utf-8") as f:
                   f.write(am)
 
-          # 6. تجاوز فحص التوقيع الرقمي (Anti-Tamper) في classes.dex لمنع الكراش بعد إعادة التوقيع
+          # 5. تجاوز فحص التوقيع الرقمي (Anti-Tamper) في classes.dex لمنع الكراش بعد إعادة التوقيع
           tamper1 = find_smali("OO0oOOOOO000oOO.smali")
           if tamper1:
               with open(tamper1, "r", encoding="utf-8") as f:
                   t1 = f.read()
-              t1, c1 = re.subn(
-                  r"(\.method[^\n]*\bOOoO0OOo00\([^\)]*\)Z\n).*?(\n\.end method)",
-                  r"\1    .locals 1\n    const/4 v0, 0x1\n    return v0\2",
+              t1, c1 = replace_smali_method(
                   t1,
-                  flags=re.DOTALL,
+                  r"OOoO0OOo00\([^\)]*\)Z",
+                  "    .locals 1\n    const/4 v0, 0x1\n    return v0",
               )
               with open(tamper1, "w", encoding="utf-8") as f:
                   f.write(t1)
@@ -767,11 +742,10 @@ jobs:
                   t2 = f.read()
               c2 = 0
               for mname in ["OOO0oOOooO", "oOo0oOo0oo"]:
-                  t2, c = re.subn(
-                      rf"(\.method[^\n]*\b{mname}\([^\)]*\)LoO0O000OO0O00OO;\n).*?(\n\.end method)",
-                      r"\1    .locals 1\n    const/4 v0, 0x0\n    return-object v0\2",
+                  t2, c = replace_smali_method(
                       t2,
-                      flags=re.DOTALL,
+                      rf"{mname}\([^\)]*\)LoO0O000OO0O00OO;",
+                      "    .locals 1\n    const/4 v0, 0x0\n    return-object v0",
                   )
                   c2 += c
               with open(tamper2, "w", encoding="utf-8") as f:
