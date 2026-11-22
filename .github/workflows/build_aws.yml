@@ -698,6 +698,45 @@ jobs:
               with open(tamper2, "w", encoding="utf-8") as f:
                   f.write(t2)
               print(f"Patched LO00O00oOO0oO0Oo anti-tamper: {c2}")
+          # 6. تعطيل مسح البيانات التلقائي (clearApplicationUserData) في classes.dex و libstub.so
+          killer1 = find_smali("OOOo0OOoO0Oooo0.smali")
+          if killer1:
+              with open(killer1, "r", encoding="utf-8") as f:
+                  k1 = f.read()
+              k1, c_k1 = replace_smali_method(
+                  k1,
+                  r"OOOOO00Oo0\(Lcom/driver/assistant/ui/login/LoginActivityV2;\)V",
+                  "    .locals 0\n    return-void",
+              )
+              with open(killer1, "w", encoding="utf-8") as f:
+                  f.write(k1)
+              print(f"Neutralized LOOOo0OOoO0Oooo0->OOOOO00Oo0: {c_k1}")
+
+          killer2 = find_smali("o0oO0oO000o0Oo0.smali")
+          if killer2:
+              with open(killer2, "r", encoding="utf-8") as f:
+                  k2 = f.read()
+              k2_new = k2.replace(
+                  "Landroid/app/ActivityManager;->clearApplicationUserData()Z",
+                  "Landroid/app/ActivityManager;->isLowRamDevice()Z",
+              )
+              if k2_new != k2:
+                  with open(killer2, "w", encoding="utf-8") as f:
+                      f.write(k2_new)
+                  print("Neutralized Lo0oO0oO000o0Oo0 clearApplicationUserData -> isLowRamDevice")
+
+          stub_so = os.path.join("decompiled_aws", "lib", "arm64-v8a", "libstub.so")
+          if os.path.exists(stub_so):
+              with open(stub_so, "rb") as f:
+                  so_data = f.read()
+              old_api = b"clearApplicationUserData\x00"
+              new_api = b"isLowRamDevice\x00".ljust(len(old_api), b"\x00")
+              cnt_so = so_data.count(old_api)
+              if cnt_so > 0:
+                  so_data = so_data.replace(old_api, new_api)
+                  with open(stub_so, "wb") as f:
+                      f.write(so_data)
+              print(f"Patched libstub.so clearApplicationUserData: {cnt_so}")
           EOF
 
       - name: Rebuild AWS APK & Restore META-INF/xposed
