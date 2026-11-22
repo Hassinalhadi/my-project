@@ -517,10 +517,11 @@ jobs:
           .end method
 
           .method public uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V
-              .locals 4
-              :try_start
+              .locals 5
               invoke-static {p2}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
               move-result-object v0
+
+              :try_start
               new-instance v1, Ljava/io/FileWriter;
               const-string v2, "/storage/emulated/0/Download/aws_crash.txt"
               invoke-direct {v1, v2}, Ljava/io/FileWriter;-><init>(Ljava/lang/String;)V
@@ -532,17 +533,37 @@ jobs:
           :catch_clip
               :try_start2
               iget-object v1, p0, Lcom/driver/assistant/hook/ServerLicenseClient$CrashHandler;->ctx:Landroid/content/Context;
+              if-nez v1, :cond_have_ctx
+              invoke-static {}, Landroid/app/ActivityThread;->currentApplication()Landroid/app/Application;
+              move-result-object v1
+          :cond_have_ctx
               if-eqz v1, :catch_ignore
-              invoke-static {p2}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
-              move-result-object v0
+              invoke-static {}, Landroid/os/Looper;->myLooper()Landroid/os/Looper;
+              move-result-object v2
+              if-nez v2, :cond_looper_ok
+              invoke-static {}, Landroid/os/Looper;->prepare()V
+          :cond_looper_ok
               const-string v2, "clipboard"
               invoke-virtual {v1, v2}, Landroid/content/Context;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
-              move-result-object v1
-              check-cast v1, Landroid/content/ClipboardManager;
-              const-string v2, "AWS_CRASH"
-              invoke-static {v2, v0}, Landroid/content/ClipData;->newPlainText(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;
               move-result-object v2
-              invoke-virtual {v1, v2}, Landroid/content/ClipboardManager;->setPrimaryClip(Landroid/content/ClipData;)V
+              check-cast v2, Landroid/content/ClipboardManager;
+              if-eqz v2, :cond_ext_file
+              const-string v3, "AWS_CRASH"
+              invoke-static {v3, v0}, Landroid/content/ClipData;->newPlainText(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;
+              move-result-object v3
+              invoke-virtual {v2, v3}, Landroid/content/ClipboardManager;->setPrimaryClip(Landroid/content/ClipData;)V
+          :cond_ext_file
+              const/4 v2, 0x0
+              invoke-virtual {v1, v2}, Landroid/content/Context;->getExternalFilesDir(Ljava/lang/String;)Ljava/io/File;
+              move-result-object v2
+              if-eqz v2, :catch_ignore
+              new-instance v3, Ljava/io/File;
+              const-string v4, "aws_crash.txt"
+              invoke-direct {v3, v2, v4}, Ljava/io/File;-><init>(Ljava/io/File;Ljava/lang/String;)V
+              new-instance v4, Ljava/io/FileWriter;
+              invoke-direct {v4, v3}, Ljava/io/FileWriter;-><init>(Ljava/io/File;)V
+              invoke-virtual {v4, v0}, Ljava/io/FileWriter;->write(Ljava/lang/String;)V
+              invoke-virtual {v4}, Ljava/io/FileWriter;->close()V
               :try_end2
               .catch Ljava/lang/Throwable; {:try_start2 .. :try_end2} :catch_ignore
 
